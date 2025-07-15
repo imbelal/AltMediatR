@@ -169,4 +169,4 @@ Contributions are welcome! To contribute:
 Please ensure your code adheres to the project's coding standards and includes tests where applicable.
 
 ## License
-This project does not currently specify a license. Contact the repository owner (imbelal) for licensing details.
+This project is licensed under the MIT License. See the LICENSE file for details.
