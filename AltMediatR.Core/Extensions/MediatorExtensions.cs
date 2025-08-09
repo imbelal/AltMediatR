@@ -17,7 +17,8 @@ namespace AltMediatR.Core.Extensions
         /// </summary>
         public static IServiceCollection AddAltMediator(this IServiceCollection services)
         {
-            services.AddSingleton<IMediator, Mediator.Mediator>();
+            // Scoped lifetime so handlers can depend on scoped services (e.g., DbContext)
+            services.AddScoped<IMediator, Mediator.Mediator>();
 
             // Register a default validator so ValidationBehavior can resolve when no custom validator is provided
             services.AddTransient(typeof(IValidator<>), typeof(NoOpValidator<>));
