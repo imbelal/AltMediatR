@@ -22,6 +22,12 @@ namespace AltMediatR.Core.Mediator
             ?? throw new InvalidOperationException("Pipeline method not found.");
         private static readonly ConcurrentDictionary<(Type Request, Type Response), MethodInfo> s_sendCoreCache = new();
 
+        // Cache for the void (non-generic response) path
+        private static readonly MethodInfo s_sendCoreVoidOpenMethod = typeof(Mediator)
+            .GetMethod("SendCoreVoidAsync", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("Void pipeline method not found.");
+        private static readonly ConcurrentDictionary<Type, MethodInfo> s_sendCoreVoidCache = new();
+
         public Mediator(IServiceProvider serviceProvider)
         {
             _serviceProvider = serviceProvider;
@@ -52,6 +58,26 @@ namespace AltMediatR.Core.Mediator
             var task = (Task<TResponse>?)generic.Invoke(this, new object[] { request, cancellationToken });
             if (task == null) throw new InvalidOperationException("Pipeline invocation failed.");
             return await task.ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Sends a request to its handler. This non-generic method adapts to the existing generic pipeline
+        /// by using Unit internally, but hides it from the public API.
+        /// </summary>
+        /// <param name="request">The request instance.</param>
+        /// <param name="cancellationToken">A cancellation token.</param>
+        /// <exception cref="ArgumentNullException">If <paramref name="request"/> is null.</exception>
+        /// <exception cref="InvalidOperationException">If internal pipeline cannot be invoked or handler cannot be resolved.</exception>
+        public async Task SendAsync(IRequest request, CancellationToken cancellationToken = default)
+        {
+            if (request == null) throw new ArgumentNullException(nameof(request));
+            cancellationToken.ThrowIfCancellationRequested(); // Fast-fail if already cancelled
+
+            var requestType = request.GetType();
+            var generic = s_sendCoreVoidCache.GetOrAdd(requestType, t => s_sendCoreVoidOpenMethod.MakeGenericMethod(t));
+            if (generic.Invoke(this, new object[] { request, cancellationToken }) is not Task task)
+                throw new InvalidOperationException("Void pipeline invocation failed.");
+            await task.ConfigureAwait(false);
         }
 
         /// <summary>
@@ -113,6 +139,64 @@ namespace AltMediatR.Core.Mediator
                 await post.ProcessAsync(request, response, cancellationToken).ConfigureAwait(false);
 
             return response;
+        }
+
+        /// <summary>
+        /// New: true void pipeline, hides Unit from public API but applies same behaviors and processors internally
+        /// </summary>
+        private async Task SendCoreVoidAsync<TRequest>(TRequest request, CancellationToken cancellationToken)
+            where TRequest : IRequest
+        {
+            // Pre-processors
+            var preProcessors = _serviceProvider.GetServices<IRequestPreProcessor<TRequest>>();
+            foreach (var pre in preProcessors)
+                await pre.ProcessAsync(request, cancellationToken).ConfigureAwait(false);
+
+            // Resolve void handler
+            var handler = _serviceProvider.GetService<IRequestHandler<TRequest>>()
+                          ?? throw new InvalidOperationException($"Handler for {typeof(TRequest).Name} not found. Ensure it is registered.");
+
+            // Terminal delegate adapted to Unit for internal behaviors
+            RequestHandlerDelegate<Unit> next = async () =>
+            {
+                await handler.HandleAsync(request, cancellationToken).ConfigureAwait(false);
+                return Unit.Value;
+            };
+
+            // Behaviors (use Unit internally)
+            var behaviors = _serviceProvider.GetServices<IPipelineBehavior<TRequest, Unit>>().ToList();
+
+            var pipelineConfig = _serviceProvider.GetService<PipelineConfig>();
+            if (pipelineConfig?.BehaviorsInOrder?.Count > 0)
+            {
+                // Map open generic behavior definitions to an index based on desired order
+                var orderIndex = pipelineConfig.BehaviorsInOrder
+                    .Select((t, i) => new { t, i })
+                    .ToDictionary(x => x.t, x => x.i);
+
+                behaviors = behaviors
+                    .OrderBy(b =>
+                    {
+                        var def = b.GetType().IsGenericType ? b.GetType().GetGenericTypeDefinition() : b.GetType();
+                        return orderIndex.TryGetValue(def, out var idx) ? idx : int.MaxValue;
+                    })
+                    .ToList();
+            }
+
+            for (int i = behaviors.Count - 1; i >= 0; i--)
+            {
+                var behavior = behaviors[i];
+                var capturedNext = next;
+                next = () => behavior.HandleAsync(request, cancellationToken, capturedNext);
+            }
+
+            // Execute pipeline
+            var _ = await next().ConfigureAwait(false);
+
+            // Post-processors (use Unit internally)
+            var postProcessors = _serviceProvider.GetServices<IRequestPostProcessor<TRequest, Unit>>();
+            foreach (var post in postProcessors)
+                await post.ProcessAsync(request, Unit.Value, cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>

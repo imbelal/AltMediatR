@@ -38,6 +38,10 @@ Console.WriteLine($"User created with ID: {userId}");
 var userInfo = await mediator.SendAsync(new GetUserQuery { UserId = userId });
 Console.WriteLine(userInfo);
 
+// Sample void command: Delete user
+await mediator.SendAsync(new DeleteUserCommand { UserId = userId });
+Console.WriteLine("Delete completed");
+
 // Sample events
 var sampleEvent = new SampleEvent()
 {

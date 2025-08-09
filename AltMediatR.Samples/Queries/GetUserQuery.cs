@@ -2,7 +2,7 @@
 
 namespace AltMediatR.Samples.Queries
 {
-    public class GetUserQuery : IRequest<string>
+    public class GetUserQuery : IQuery<string>
     {
         public string UserId { get; set; }
     }

@@ -8,6 +8,11 @@
         Task<TResponse> SendAsync<TResponse>(IRequest<TResponse> request, CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// Sends a request that has no response payload to a single handler.
+        /// </summary>
+        Task SendAsync(IRequest request, CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Publishes a notification to all registered handlers.
         /// </summary>
         /// <typeparam name="TNotification"></typeparam>

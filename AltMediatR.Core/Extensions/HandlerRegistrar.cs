@@ -2,6 +2,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using System.Reflection;
 using System;
+using System.Linq;
 
 namespace AltMediatR.Core.Extensions
 {
@@ -11,7 +12,7 @@ namespace AltMediatR.Core.Extensions
     public static class HandlerRegistrar
     {
         /// <summary>
-        /// Registers all IRequestHandler and INotificationHandler implementations from the specified assembly as transient services.
+        /// Registers all IRequestHandler, IRequestHandler (void), and INotificationHandler implementations from the specified assembly as transient services.
         /// </summary>
         /// <param name="services"></param>
         /// <param name="assembly"></param>
@@ -20,9 +21,10 @@ namespace AltMediatR.Core.Extensions
             var types = assembly.GetTypes()
                 .Where(t => !t.IsAbstract && !t.IsInterface)
                 .SelectMany(t => t.GetInterfaces(), (t, i) => new { Type = t, Interface = i })
-                .Where(x => x.Interface.IsGenericType &&
-                            (x.Interface.GetGenericTypeDefinition() == typeof(IRequestHandler<,>) ||
-                             x.Interface.GetGenericTypeDefinition() == typeof(INotificationHandler<>)))
+                .Where(x => x.Interface.IsGenericType && (
+                            x.Interface.GetGenericTypeDefinition() == typeof(IRequestHandler<,>) ||
+                            x.Interface.GetGenericTypeDefinition() == typeof(IRequestHandler<>) ||
+                            x.Interface.GetGenericTypeDefinition() == typeof(INotificationHandler<>)))
                 .ToList();
 
             foreach (var pair in types)

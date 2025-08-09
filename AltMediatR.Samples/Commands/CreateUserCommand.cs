@@ -2,7 +2,7 @@
 
 namespace AltMediatR.Samples.Commands
 {
-    public class CreateUserCommand : IRequest<string>
+    public class CreateUserCommand : ICommand<string>
     {
         public string Name { get; set; }
     }
