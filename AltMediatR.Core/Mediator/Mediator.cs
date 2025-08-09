@@ -4,6 +4,7 @@ using System.Reflection;
 using AltMediatR.Core.Deligates;
 using AltMediatR.Core.Configurations;
 using System.Linq;
+using System.Collections.Concurrent;
 
 namespace AltMediatR.Core.Mediator
 {
@@ -14,6 +15,12 @@ namespace AltMediatR.Core.Mediator
     public class Mediator : IMediator
     {
         private readonly IServiceProvider _serviceProvider;
+
+        // Cache the open generic method and closed generic variants to avoid repeated reflection
+        private static readonly MethodInfo s_sendCoreOpenMethod = typeof(Mediator)
+            .GetMethod("SendCoreAsync", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("Pipeline method not found.");
+        private static readonly ConcurrentDictionary<(Type Request, Type Response), MethodInfo> s_sendCoreCache = new();
 
         public Mediator(IServiceProvider serviceProvider)
         {
@@ -38,10 +45,10 @@ namespace AltMediatR.Core.Mediator
             var requestType = request.GetType();
             var responseType = typeof(TResponse);
 
-            // Delegate to strongly-typed core pipeline (avoids repeated reflection inside the pipeline)
-            var core = typeof(Mediator).GetMethod("SendCoreAsync", BindingFlags.Instance | BindingFlags.NonPublic)
-                       ?? throw new InvalidOperationException("Pipeline method not found.");
-            var generic = core.MakeGenericMethod(requestType, responseType);
+            // Use cached closed generic SendCoreAsync<TRequest,TResponse>
+            var generic = s_sendCoreCache.GetOrAdd((requestType, responseType), key =>
+                s_sendCoreOpenMethod.MakeGenericMethod(key.Request, key.Response));
+
             var task = (Task<TResponse>?)generic.Invoke(this, new object[] { request, cancellationToken });
             if (task == null) throw new InvalidOperationException("Pipeline invocation failed.");
             return await task.ConfigureAwait(false);
