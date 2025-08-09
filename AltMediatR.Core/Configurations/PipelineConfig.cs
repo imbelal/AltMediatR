@@ -8,6 +8,7 @@ namespace AltMediatR.Core.Configurations
         {
             typeof(LoggingBehavior<,>),
             typeof(ValidationBehavior<,>),
+            typeof(PerformanceBehavior<,>),
             typeof(RetryBehavior<,>),
             typeof(CachingBehavior<,>)
         };

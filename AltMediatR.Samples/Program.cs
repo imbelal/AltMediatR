@@ -12,10 +12,18 @@ var services = new ServiceCollection();
 
 // Add logging
 services.AddLogging();
+services.AddMemoryCache();
 
 // Register the mediator + handlers
-services.AddAltMediator();
-services.RegisterHandlersFromAssembly(Assembly.GetAssembly(typeof(Program)));
+services.AddAltMediator(s =>
+{
+    s.AddLoggingBehavior()
+    .AddValidationBehavior()
+    .AddPerformanceBehavior()
+    .AddRetryBehavior()
+    .AddCachingBehavior();
+});
+services.RegisterHandlersFromAssembly(Assembly.GetExecutingAssembly());
 services.RegisterRequestPreProcessor(typeof(LoggingPreProcessor<>));
 services.RegisterRequestPostProcessor(typeof(LoggingPostProcessor<,>));
 

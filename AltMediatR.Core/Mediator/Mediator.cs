@@ -1,19 +1,19 @@
 ﻿using AltMediatR.Core.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
-using System.Collections.Concurrent;
-using System.Linq.Expressions;
 using System.Reflection;
+using AltMediatR.Core.Deligates;
+using AltMediatR.Core.Configurations;
+using System.Linq;
 
 namespace AltMediatR.Core.Mediator
 {
     /// <summary>
-    /// Mediator class that implements IMediator interface.
+    /// The core Mediator implementation responsible for dispatching requests to their single handler,
+    /// executing pre/post processors, and orchestrating the request pipeline behaviors.
     /// </summary>
     public class Mediator : IMediator
     {
         private readonly IServiceProvider _serviceProvider;
-        // Cache for value-returning handlers: Key = Request Type
-        private static readonly ConcurrentDictionary<Type, Func<object, object, CancellationToken, Task>> _handlerInvokers = new();
 
         public Mediator(IServiceProvider serviceProvider)
         {
@@ -21,162 +21,103 @@ namespace AltMediatR.Core.Mediator
         }
 
         /// <summary>
-        /// Sends a request to the appropriate handler and returns the response.
+        /// Sends a request to its handler and returns a response, executing:
+        /// Pre-processors -> Pipeline Behaviors -> Handler -> Post-processors.
         /// </summary>
-        /// <typeparam name="TResponse"></typeparam>
-        /// <param name="request"></param>
-        /// <param name="cancellationToken"></param>
-        /// <returns></returns>
-        /// <exception cref="ArgumentNullException"></exception>
-        /// <exception cref="InvalidOperationException"></exception>
+        /// <typeparam name="TResponse">The response type returned by the handler.</typeparam>
+        /// <param name="request">The request instance.</param>
+        /// <param name="cancellationToken">A cancellation token.</param>
+        /// <returns>The handler response.</returns>
+        /// <exception cref="ArgumentNullException">If <paramref name="request"/> is null.</exception>
+        /// <exception cref="InvalidOperationException">If internal pipeline cannot be invoked or handler cannot be resolved.</exception>
         public async Task<TResponse> SendAsync<TResponse>(IRequest<TResponse> request, CancellationToken cancellationToken = default)
         {
             if (request == null) throw new ArgumentNullException(nameof(request));
-            cancellationToken.ThrowIfCancellationRequested(); // Early check
+            cancellationToken.ThrowIfCancellationRequested(); // Fast-fail if already cancelled
 
             var requestType = request.GetType();
-            var responseType = typeof(TResponse); // Capture TResponse type
+            var responseType = typeof(TResponse);
 
-            // Run pre-processors
-            await RunPreProcessorsAsync(request, cancellationToken, requestType);
+            // Delegate to strongly-typed core pipeline (avoids repeated reflection inside the pipeline)
+            var core = typeof(Mediator).GetMethod("SendCoreAsync", BindingFlags.Instance | BindingFlags.NonPublic)
+                       ?? throw new InvalidOperationException("Pipeline method not found.");
+            var generic = core.MakeGenericMethod(requestType, responseType);
+            var task = (Task<TResponse>?)generic.Invoke(this, new object[] { request, cancellationToken });
+            if (task == null) throw new InvalidOperationException("Pipeline invocation failed.");
+            return await task.ConfigureAwait(false);
+        }
 
-            // Resolve the handler instance
-            var handlerInterfaceType = typeof(IRequestHandler<,>).MakeGenericType(requestType, responseType);
-            var handler = _serviceProvider.GetService(handlerInterfaceType)
-                          ?? throw new InvalidOperationException($"Handler for request type {requestType.Name} returning {responseType.Name} not found. Ensure it is registered.");
+        /// <summary>
+        /// Strongly-typed execution path for a request/response pair that composes the full pipeline:
+        /// 1) Runs all pre-processors for TRequest
+        /// 2) Orders and composes registered IPipelineBehavior&lt;TRequest,TResponse&gt; around the handler
+        /// 3) Invokes the handler exactly once
+        /// 4) Runs all post-processors for (TRequest, TResponse)
+        /// </summary>
+        private async Task<TResponse> SendCoreAsync<TRequest, TResponse>(TRequest request, CancellationToken cancellationToken)
+            where TRequest : IRequest<TResponse>
+        {
+            // 1) Pre-processors (do not call the handler)
+            var preProcessors = _serviceProvider.GetServices<IRequestPreProcessor<TRequest>>();
+            foreach (var pre in preProcessors)
+                await pre.ProcessAsync(request, cancellationToken).ConfigureAwait(false);
 
-            // Get or create the compiled invoker delegate
-            var invoker = _handlerInvokers.GetOrAdd(requestType,
-                // Factory function to build the delegate if it doesn't exist
-                rt => BuildHandlerInvokerDelegate(rt, responseType, handlerInterfaceType));
+            // 2) Resolve the single handler for TRequest -> TResponse
+            var handler = _serviceProvider.GetService<IRequestHandler<TRequest, TResponse>>()
+                          ?? throw new InvalidOperationException($"Handler for {typeof(TRequest).Name} returning {typeof(TResponse).Name} not found. Ensure it is registered.");
 
-            // Invoke the compiled delegate and await the Task<TResponse>
-            Task taskResult = invoker(handler, request, cancellationToken);
-            TResponse response = await (Task<TResponse>)taskResult;
+            // Terminal delegate that calls the handler exactly once
+            RequestHandlerDelegate<TResponse> next = () => handler.HandleAsync(request, cancellationToken);
 
-            // Run post-processors with response
-            await RunPostProcessorsAsync(request, response, cancellationToken, requestType);
+            // 3) Resolve behaviors and optionally apply ordering from PipelineConfig
+            var behaviors = _serviceProvider.GetServices<IPipelineBehavior<TRequest, TResponse>>().ToList();
+
+            var pipelineConfig = _serviceProvider.GetService<PipelineConfig>();
+            if (pipelineConfig?.BehaviorsInOrder?.Count > 0)
+            {
+                // Map open generic behavior definitions to an index based on desired order
+                var orderIndex = pipelineConfig.BehaviorsInOrder
+                    .Select((t, i) => new { t, i })
+                    .ToDictionary(x => x.t, x => x.i);
+
+                behaviors = behaviors
+                    .OrderBy(b =>
+                    {
+                        var def = b.GetType().IsGenericType ? b.GetType().GetGenericTypeDefinition() : b.GetType();
+                        return orderIndex.TryGetValue(def, out var idx) ? idx : int.MaxValue;
+                    })
+                    .ToList();
+            }
+
+            // Compose the middleware-style pipeline in reverse so the first registered behavior runs outermost
+            for (int i = behaviors.Count - 1; i >= 0; i--)
+            {
+                var behavior = behaviors[i];
+                var capturedNext = next;
+                next = () => behavior.HandleAsync(request, cancellationToken, capturedNext);
+            }
+
+            // 4) Execute pipeline -> handler
+            var response = await next().ConfigureAwait(false);
+
+            // Post-processors (observe both request and response; do not re-invoke the handler)
+            var postProcessors = _serviceProvider.GetServices<IRequestPostProcessor<TRequest, TResponse>>();
+            foreach (var post in postProcessors)
+                await post.ProcessAsync(request, response, cancellationToken).ConfigureAwait(false);
 
             return response;
         }
 
         /// <summary>
-        /// Builds a delegate to invoke the handler's HandleAsync method.
+        /// Publishes a notification to all registered notification handlers.
+        /// Note: Behaviors are not applied to notifications; each handler is invoked directly.
         /// </summary>
-        /// <param name="requestType"></param>
-        /// <param name="responseType"></param>
-        /// <param name="handlerInterfaceType"></param>
-        /// <returns></returns>
-        /// <exception cref="InvalidOperationException"></exception>
-        private static Func<object, object, CancellationToken, Task> BuildHandlerInvokerDelegate(
-            Type requestType, Type responseType, Type handlerInterfaceType)
-        {
-            try
-            {
-                // Find the HandleAsync(TRequest, CancellationToken) method on the specific handler interface
-                MethodInfo handleMethodInfo = handlerInterfaceType.GetMethod(
-                    "HandleAsync",
-                    BindingFlags.Public | BindingFlags.Instance | BindingFlags.InvokeMethod,
-                    null, // Use default binder
-                    new[] { requestType, typeof(CancellationToken) }, // Signature we are looking for
-                    null  // No parameter modifiers
-                ) ?? throw new InvalidOperationException($"Could not find HandleAsync({requestType.Name}, CancellationToken) method on {handlerInterfaceType.Name}");
-
-                // Define expression parameters for the Func<object, object, CancellationToken, Task>
-                var handlerObjParam = Expression.Parameter(typeof(object), "handler");
-                var requestObjParam = Expression.Parameter(typeof(object), "request");
-                var ctParam = Expression.Parameter(typeof(CancellationToken), "cancellationToken");
-
-                // Cast the object parameters to their specific types
-                var handlerTypedParam = Expression.Convert(handlerObjParam, handlerInterfaceType);
-                var requestTypedParam = Expression.Convert(requestObjParam, requestType);
-
-                // Create the method call expression
-                // Calls handlerTyped.HandleAsync(requestTyped, ctParam)
-                // The result of this call is Task<TResponse>
-                var call = Expression.Call(handlerTypedParam, handleMethodInfo, requestTypedParam, ctParam);
-
-                // Compile the expression into a delegate
-                // The 'call' returns Task<TResponse>, which is assignable to the 'Task' return type of the Func.
-                var lambda = Expression.Lambda<Func<object, object, CancellationToken, Task>>(
-                    call,
-                    handlerObjParam, requestObjParam, ctParam);
-
-                return lambda.Compile();
-            }
-            catch (Exception ex)
-            {
-                // Wrap exception for better context during debugging
-                throw new InvalidOperationException($"Failed to compile handler invoker for request {requestType.Name} -> {responseType.Name}. See inner exception.", ex);
-            }
-        }
-
-        /// <summary>
-        /// Runs pre-processors for the request.
-        /// </summary>
-        /// <typeparam name="TResponse"></typeparam>
-        /// <param name="request"></param>
-        /// <param name="cancellationToken"></param>
-        /// <param name="requestType"></param>
-        /// <returns></returns>
-        private async Task RunPreProcessorsAsync<TResponse>(IRequest<TResponse> request, CancellationToken cancellationToken, Type requestType)
-        {
-            // Resolve all IRequestPreProcessor<TRequest> for this request type and execute them
-            var preProcessorInterface = typeof(IRequestPreProcessor<>).MakeGenericType(requestType);
-            var processAsync = preProcessorInterface.GetMethod("ProcessAsync");
-            if (processAsync == null)
-                return;
-
-            var processors = _serviceProvider.GetServices(preProcessorInterface);
-            foreach (var processor in processors)
-            {
-                var task = (Task?)processAsync.Invoke(processor, new object[] { request, cancellationToken });
-                if (task != null)
-                    await task.ConfigureAwait(false);
-            }
-        }
-
-        /// <summary>
-        /// Runs post-processors for the request with response.
-        /// </summary>
-        /// <typeparam name="TResponse"></typeparam>
-        /// <param name="request"></param>
-        /// <param name="cancellationToken"></param>
-        /// <param name="requestType"></param>
-        /// <returns></returns>
-        private async Task RunPostProcessorsAsync<TResponse>(IRequest<TResponse> request, TResponse response, CancellationToken cancellationToken, Type requestType)
-        {
-            // Resolve all IRequestPostProcessor<TRequest, TResponse> and execute them
-            var postProcessorInterface = typeof(IRequestPostProcessor<,>).MakeGenericType(requestType, typeof(TResponse));
-            var processAsync = postProcessorInterface.GetMethod("ProcessAsync");
-            if (processAsync == null)
-                return;
-
-            var processors = _serviceProvider.GetServices(postProcessorInterface);
-            foreach (var processor in processors)
-            {
-                var task = (Task?)processAsync.Invoke(processor, new object[] { request, response, cancellationToken });
-                if (task != null)
-                    await task.ConfigureAwait(false);
-            }
-        }
-
-        /// <summary>
-        /// Publishes a notification to all registered handlers.
-        /// </summary>
-        /// <typeparam name="TNotification"></typeparam>
-        /// <param name="notification"></param>
-        /// <param name="cancellationToken"></param>
-        /// <returns></returns>
-        /// <exception cref="ArgumentNullException"></exception>
         public async Task PublishAsync<TNotification>(TNotification notification, CancellationToken cancellationToken = default)
             where TNotification : INotification
         {
             if (notification == null) throw new ArgumentNullException(nameof(notification));
 
             var handlers = _serviceProvider.GetServices<INotificationHandler<TNotification>>();
-
-            // Loop through all handlers and invoke their HandleAsync method
             foreach (var handler in handlers)
             {
                 await handler.HandleAsync(notification, cancellationToken);
