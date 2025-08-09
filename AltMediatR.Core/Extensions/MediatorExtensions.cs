@@ -2,6 +2,7 @@
 using AltMediatR.Core.Behaviors;
 using Microsoft.Extensions.DependencyInjection;
 using System;
+using AltMediatR.Core.Configurations;
 
 namespace AltMediatR.Core.Extensions
 {
@@ -69,6 +70,14 @@ namespace AltMediatR.Core.Extensions
         // Restrict caching to queries (behavior itself already bypasses non-queries)
         public static IServiceCollection AddCachingForQueries(this IServiceCollection services)
             => services.AddCachingBehavior();
+
+        public static IServiceCollection AddCachingForQueries(this IServiceCollection services, Action<CachingOptions> configure)
+        {
+            var options = new CachingOptions();
+            configure?.Invoke(options);
+            services.AddSingleton(options);
+            return services.AddCachingBehavior();
+        }
     }
 
 }

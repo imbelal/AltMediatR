@@ -21,7 +21,7 @@ services.AddAltMediator(s =>
     .AddValidationBehavior()
     .AddPerformanceBehavior()
     .AddRetryBehavior()
-    .AddCachingBehavior();
+    .AddCachingForQueries(o => { o.DefaultTtl = TimeSpan.FromMinutes(2); o.KeyPrefix = "sample:"; });
 });
 services.RegisterHandlersFromAssembly(Assembly.GetExecutingAssembly());
 services.RegisterRequestPreProcessor(typeof(LoggingPreProcessor<>));

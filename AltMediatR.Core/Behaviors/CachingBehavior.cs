@@ -2,6 +2,7 @@
 using AltMediatR.Core.Deligates;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
+using AltMediatR.Core.Configurations;
 
 namespace AltMediatR.Core.Behaviors
 {
@@ -10,11 +11,13 @@ namespace AltMediatR.Core.Behaviors
     {
         private readonly IMemoryCache _cache;
         private readonly ILogger<CachingBehavior<TRequest, TResponse>> _logger;
+        private readonly CachingOptions _options;
 
-        public CachingBehavior(IMemoryCache cache, ILogger<CachingBehavior<TRequest, TResponse>> logger)
+        public CachingBehavior(IMemoryCache cache, ILogger<CachingBehavior<TRequest, TResponse>> logger, CachingOptions? options = null)
         {
             _cache = cache;
             _logger = logger;
+            _options = options ?? new CachingOptions();
         }
 
         public async Task<TResponse> HandleAsync(TRequest request, CancellationToken cancellationToken, RequestHandlerDelegate<TResponse> next)
@@ -31,7 +34,10 @@ namespace AltMediatR.Core.Behaviors
                 return await next().ConfigureAwait(false);
             }
 
-            var cacheKey = cacheable.CacheKey;
+            var cacheKey = string.IsNullOrEmpty(_options.KeyPrefix)
+                ? cacheable.CacheKey
+                : _options.KeyPrefix + cacheable.CacheKey;
+
             if (_cache.TryGetValue(cacheKey, out var obj) && obj is TResponse cached)
             {
                 _logger.LogInformation("[CACHE] Hit for {CacheKey}", cacheKey);
@@ -41,15 +47,8 @@ namespace AltMediatR.Core.Behaviors
             var response = await next().ConfigureAwait(false);
 
             var options = new MemoryCacheEntryOptions();
-            if (cacheable.AbsoluteExpirationRelativeToNow.HasValue)
-            {
-                options.SetAbsoluteExpiration(cacheable.AbsoluteExpirationRelativeToNow.Value);
-            }
-            else
-            {
-                // Sensible default if TTL not provided
-                options.SetAbsoluteExpiration(TimeSpan.FromMinutes(5));
-            }
+            var ttl = cacheable.AbsoluteExpirationRelativeToNow ?? _options.DefaultTtl;
+            options.SetAbsoluteExpiration(ttl);
 
             _cache.Set(cacheKey, response!, options);
             return response;
