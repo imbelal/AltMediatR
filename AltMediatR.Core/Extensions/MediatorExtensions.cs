@@ -65,6 +65,10 @@ namespace AltMediatR.Core.Extensions
 
         public static IServiceCollection AddCachingBehavior(this IServiceCollection services)
             => services.AddPipelineBehavior(typeof(CachingBehavior<,>));
+
+        // Restrict caching to queries (behavior itself already bypasses non-queries)
+        public static IServiceCollection AddCachingForQueries(this IServiceCollection services)
+            => services.AddCachingBehavior();
     }
 
 }

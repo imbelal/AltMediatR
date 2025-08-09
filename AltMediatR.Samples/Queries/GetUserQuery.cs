@@ -2,9 +2,12 @@
 
 namespace AltMediatR.Samples.Queries
 {
-    public class GetUserQuery : IQuery<string>
+    public class GetUserQuery : IQuery<string>, ICacheable
     {
         public string UserId { get; set; }
+
+        public string CacheKey => $"GetUser:{UserId}";
+        public TimeSpan? AbsoluteExpirationRelativeToNow => TimeSpan.FromMinutes(2);
     }
 
     public class GetUserHandler : IRequestHandler<GetUserQuery, string>

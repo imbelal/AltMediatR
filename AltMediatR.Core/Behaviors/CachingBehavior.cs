@@ -2,7 +2,6 @@
 using AltMediatR.Core.Deligates;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
-using System.Text.Json;
 
 namespace AltMediatR.Core.Behaviors
 {
@@ -20,16 +19,39 @@ namespace AltMediatR.Core.Behaviors
 
         public async Task<TResponse> HandleAsync(TRequest request, CancellationToken cancellationToken, RequestHandlerDelegate<TResponse> next)
         {
-            var cacheKey = $"{typeof(TRequest).FullName}:{JsonSerializer.Serialize(request)}";
-
-            if (_cache.TryGetValue(cacheKey, out TResponse cached))
+            // Only cache queries
+            if (request is not IQuery<TResponse>)
             {
-                _logger.LogInformation($"[CACHE] Hit for {cacheKey}");
+                return await next().ConfigureAwait(false);
+            }
+
+            // Require a stable cache key provider; if not provided, bypass caching to avoid bad keys
+            if (request is not ICacheable cacheable)
+            {
+                return await next().ConfigureAwait(false);
+            }
+
+            var cacheKey = cacheable.CacheKey;
+            if (_cache.TryGetValue(cacheKey, out var obj) && obj is TResponse cached)
+            {
+                _logger.LogInformation("[CACHE] Hit for {CacheKey}", cacheKey);
                 return cached;
             }
 
-            var response = await next();
-            _cache.Set(cacheKey, response, TimeSpan.FromMinutes(5));
+            var response = await next().ConfigureAwait(false);
+
+            var options = new MemoryCacheEntryOptions();
+            if (cacheable.AbsoluteExpirationRelativeToNow.HasValue)
+            {
+                options.SetAbsoluteExpiration(cacheable.AbsoluteExpirationRelativeToNow.Value);
+            }
+            else
+            {
+                // Sensible default if TTL not provided
+                options.SetAbsoluteExpiration(TimeSpan.FromMinutes(5));
+            }
+
+            _cache.Set(cacheKey, response!, options);
             return response;
         }
     }
