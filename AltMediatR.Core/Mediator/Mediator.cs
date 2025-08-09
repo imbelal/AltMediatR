@@ -1,5 +1,4 @@
 ﻿using AltMediatR.Core.Abstractions;
-using AltMediatR.Core.Processors;
 using Microsoft.Extensions.DependencyInjection;
 using System.Collections.Concurrent;
 using System.Linq.Expressions;
@@ -13,8 +12,7 @@ namespace AltMediatR.Core.Mediator
     public class Mediator : IMediator
     {
         private readonly IServiceProvider _serviceProvider;
-        // Cache for compiled delegates: Key = Request Type, Value = Func<handler, request, cancellationToken, Task>
-        // The returned Task will actually be Task<TResponse> but stored as Task for the delegate signature.
+        // Cache for value-returning handlers: Key = Request Type
         private static readonly ConcurrentDictionary<Type, Func<object, object, CancellationToken, Task>> _handlerInvokers = new();
 
         public Mediator(IServiceProvider serviceProvider)
@@ -39,32 +37,25 @@ namespace AltMediatR.Core.Mediator
             var requestType = request.GetType();
             var responseType = typeof(TResponse); // Capture TResponse type
 
-            // 🔥 Resolve and run pre-processors (Keep your existing logic or adapt if needed)
-            // Consider if pre/post processors should also be part of the pipeline handled below
+            // Run pre-processors
             await RunPreProcessorsAsync(request, cancellationToken, requestType);
 
-            // 1. Resolve the handler instance
-            // Construct the specific IRequestHandler<TRequest, TResponse> type
+            // Resolve the handler instance
             var handlerInterfaceType = typeof(IRequestHandler<,>).MakeGenericType(requestType, responseType);
             var handler = _serviceProvider.GetService(handlerInterfaceType)
                           ?? throw new InvalidOperationException($"Handler for request type {requestType.Name} returning {responseType.Name} not found. Ensure it is registered.");
 
-            // 2. Get or create the compiled invoker delegate
+            // Get or create the compiled invoker delegate
             var invoker = _handlerInvokers.GetOrAdd(requestType,
                 // Factory function to build the delegate if it doesn't exist
                 rt => BuildHandlerInvokerDelegate(rt, responseType, handlerInterfaceType));
 
-            // 3. Invoke the compiled delegate
-            // The delegate takes objects but calls the strongly-typed HandleAsync internally.
-            // The result is Task, but it's actually Task<TResponse> underneath.
+            // Invoke the compiled delegate and await the Task<TResponse>
             Task taskResult = invoker(handler, request, cancellationToken);
-
-            // 4. Await and cast the result
-            // We know the underlying Task is Task<TResponse> because we compiled it that way.
             TResponse response = await (Task<TResponse>)taskResult;
 
-            // 🔥 Resolve and run post-processors (Keep your existing logic or adapt if needed)
-            await RunPostProcessorsAsync(request, cancellationToken, requestType); // Assuming TResponse isn't needed here
+            // Run post-processors with response
+            await RunPostProcessorsAsync(request, response, cancellationToken, requestType);
 
             return response;
         }
@@ -128,45 +119,45 @@ namespace AltMediatR.Core.Mediator
         /// <param name="cancellationToken"></param>
         /// <param name="requestType"></param>
         /// <returns></returns>
-        private async Task RunPreProcessorsAsync<TResponse>(IRequest<TResponse> request, CancellationToken cancellationToken,
-            Type requestType)
+        private async Task RunPreProcessorsAsync<TResponse>(IRequest<TResponse> request, CancellationToken cancellationToken, Type requestType)
         {
-            var wrapperType = typeof(RequestPreProcessor<,>).MakeGenericType(requestType, typeof(TResponse));
-            var wrapper = _serviceProvider.GetService(wrapperType);
-            if (wrapper != null)
+            // Resolve all IRequestPreProcessor<TRequest> for this request type and execute them
+            var preProcessorInterface = typeof(IRequestPreProcessor<>).MakeGenericType(requestType);
+            var processAsync = preProcessorInterface.GetMethod("ProcessAsync");
+            if (processAsync == null)
+                return;
+
+            var processors = _serviceProvider.GetServices(preProcessorInterface);
+            foreach (var processor in processors)
             {
-                var method = wrapperType.GetMethod("ProcessAsync");
-                if (method != null)
-                {
-                    var taskResult = (Task?)method.Invoke(wrapper, new object[] { request, cancellationToken });
-                    if (taskResult != null)
-                        await taskResult;
-                }
+                var task = (Task?)processAsync.Invoke(processor, new object[] { request, cancellationToken });
+                if (task != null)
+                    await task.ConfigureAwait(false);
             }
         }
 
         /// <summary>
-        /// Runs post-processors for the request.
+        /// Runs post-processors for the request with response.
         /// </summary>
         /// <typeparam name="TResponse"></typeparam>
         /// <param name="request"></param>
         /// <param name="cancellationToken"></param>
         /// <param name="requestType"></param>
         /// <returns></returns>
-        private async Task RunPostProcessorsAsync<TResponse>(IRequest<TResponse> request, CancellationToken cancellationToken,
-            Type requestType)
+        private async Task RunPostProcessorsAsync<TResponse>(IRequest<TResponse> request, TResponse response, CancellationToken cancellationToken, Type requestType)
         {
-            var wrapperType = typeof(RequestPostProcessor<,>).MakeGenericType(requestType, typeof(TResponse));
-            var wrapper = _serviceProvider.GetService(wrapperType);
-            if (wrapper != null)
+            // Resolve all IRequestPostProcessor<TRequest, TResponse> and execute them
+            var postProcessorInterface = typeof(IRequestPostProcessor<,>).MakeGenericType(requestType, typeof(TResponse));
+            var processAsync = postProcessorInterface.GetMethod("ProcessAsync");
+            if (processAsync == null)
+                return;
+
+            var processors = _serviceProvider.GetServices(postProcessorInterface);
+            foreach (var processor in processors)
             {
-                var method = wrapperType.GetMethod("ProcessAsync");
-                if (method != null)
-                {
-                    var taskResult = (Task?)method.Invoke(wrapper, new object[] { request, cancellationToken });
-                    if (taskResult != null)
-                        await taskResult;
-                }
+                var task = (Task?)processAsync.Invoke(processor, new object[] { request, response, cancellationToken });
+                if (task != null)
+                    await task.ConfigureAwait(false);
             }
         }
 

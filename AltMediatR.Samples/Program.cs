@@ -16,8 +16,6 @@ services.AddLogging();
 // Register the mediator + handlers
 services.AddAltMediator();
 services.RegisterHandlersFromAssembly(Assembly.GetAssembly(typeof(Program)));
-services.UsePreProcessor();
-services.UsePostProcessor();
 services.RegisterRequestPreProcessor(typeof(LoggingPreProcessor<>));
 services.RegisterRequestPostProcessor(typeof(LoggingPostProcessor<,>));
 

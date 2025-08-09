@@ -1,7 +1,7 @@
 ﻿using AltMediatR.Core.Abstractions;
-using AltMediatR.Core.Processors;
 using Microsoft.Extensions.DependencyInjection;
 using System.Reflection;
+using System;
 
 namespace AltMediatR.Core.Extensions
 {
@@ -32,15 +32,6 @@ namespace AltMediatR.Core.Extensions
         }
 
         /// <summary>
-        /// Add pre-processor feature.
-        /// </summary>
-        /// <param name="services"></param>
-        public static void UsePreProcessor(this IServiceCollection services)
-        {
-            services.AddTransient(typeof(RequestPreProcessor<,>));
-        }
-
-        /// <summary>
         /// Register a custom request pre-processor.
         /// </summary>
         /// <param name="services"></param>
@@ -48,15 +39,6 @@ namespace AltMediatR.Core.Extensions
         public static void RegisterRequestPreProcessor(this IServiceCollection services, Type type)
         {
             services.AddTransient(typeof(IRequestPreProcessor<>), type);
-        }
-
-        /// <summary>
-        /// Add post-processor feature.
-        /// </summary>
-        /// <param name="services"></param>
-        public static void UsePostProcessor(this IServiceCollection services)
-        {
-            services.AddTransient(typeof(RequestPostProcessor<,>));
         }
 
         /// <summary>
