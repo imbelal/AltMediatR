@@ -1,6 +1,6 @@
 using AltMediatR.Core.Extensions;
-using AltMediatR.DDD.Extensions;
 using AltMediatR.DDD.Abstractions;
+using AltMediatR.DDD.Extensions;
 using AltMediatR.WebApiSample.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using System.Reflection;
@@ -26,22 +26,27 @@ public class Program
         builder.Services.AddDbContext<AppDbContext>(o => o.UseInMemoryDatabase("app-db"));
 
         // AltMediatR Core + DDD
-        builder.Services.AddAltMediator(s => { });
-        builder.Services.AddAltMediatorDdd()
-                        .AddTransactionalOutboxBehavior()
-                        .AddInMemoryOutboxStore()
-                        .AddInMemoryOutboxProcessor()
-                        .AddOutboxProcessorHostedService(TimeSpan.FromSeconds(5))
-                        .AddInMemoryInboundMessageProcessor()
-                        .UseInMemoryLoopbackPublisher();
+        builder.Services
+            // Mediator setup
+            .AddAltMediator(s => { })
+            .AddHandlersFromAssembly(Assembly.GetExecutingAssembly())
 
-        // Enable caching for queries
-        builder.Services.AddCachingForQueries(_ => { /* can override defaults here */ });
+            // DDD integration
+            .AddDddIntegrationDdd()
+            .AddDddHandlersFromAssembly(Assembly.GetExecutingAssembly())
 
-        // Register core handlers (requests/notifications)
-        builder.Services.RegisterHandlersFromAssembly(Assembly.GetExecutingAssembly());
-        // Register DDD integration event handlers
-        builder.Services.RegisterDddHandlersFromAssembly(Assembly.GetExecutingAssembly());
+            // Query caching
+            .AddCachingForQueries(_ => { /* can override defaults here */ })
+
+            // Outbox pattern
+            .AddInMemoryOutboxStore()
+            .AddInMemoryOutboxProcessor()
+            .AddOutboxProcessorHostedService(TimeSpan.FromSeconds(5))
+            .AddTransactionalOutboxBehavior()
+
+            // Messaging
+            .AddInMemoryInboundMessageProcessor()
+            .UseInMemoryLoopbackPublisher();
 
         // Use EF ChangeTracker-based event collector and transaction manager
         builder.Services.AddScoped<IEventQueueCollector, EfChangeTrackerEventCollector>();

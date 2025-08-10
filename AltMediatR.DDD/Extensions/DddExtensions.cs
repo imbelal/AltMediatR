@@ -3,13 +3,12 @@ using AltMediatR.DDD.Behaviors;
 using AltMediatR.DDD.Configurations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using System;
 
 namespace AltMediatR.DDD.Extensions
 {
     public static class DddExtensions
     {
-        public static IServiceCollection AddAltMediatorDdd(this IServiceCollection services)
+        public static IServiceCollection AddDddIntegrationDdd(this IServiceCollection services)
         {
             services.AddSingleton(new DddMediatorOptions());
             return services;

@@ -1,6 +1,5 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using System.Reflection;
-using System.Linq;
 
 namespace AltMediatR.Core.Extensions
 {
@@ -16,7 +15,7 @@ namespace AltMediatR.Core.Extensions
         /// </summary>
         /// <param name="services"></param>
         /// <param name="assembly"></param>
-        public static IServiceCollection RegisterHandlersFromAssembly(this IServiceCollection services, Assembly assembly)
+        public static IServiceCollection AddHandlersFromAssembly(this IServiceCollection services, Assembly assembly)
         {
             var registrations = assembly.GetTypes()
                 .Where(t => !t.IsAbstract && !t.IsInterface)

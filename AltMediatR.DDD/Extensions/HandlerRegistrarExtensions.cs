@@ -11,7 +11,7 @@ namespace AltMediatR.DDD.Extensions
         /// <summary>
         /// Registers IIntegrationEventHandler<> implementations from the specified assembly as transient services.
         /// </summary>
-        public static IServiceCollection RegisterDddHandlersFromAssembly(this IServiceCollection services, Assembly assembly)
+        public static IServiceCollection AddDddHandlersFromAssembly(this IServiceCollection services, Assembly assembly)
         {
             var registrations = assembly.GetTypes()
                 .Where(t => !t.IsAbstract && !t.IsInterface)

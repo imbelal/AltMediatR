@@ -47,7 +47,7 @@ namespace AltMediatR.Tests
         {
             var services = new ServiceCollection();
             services.AddAltMediator(s => { });
-            services.AddAltMediatorDdd();
+            services.AddDddIntegrationDdd();
             services.AddTransactionalOutboxBehavior();
             services.AddScoped<IEventQueueCollector, InMemoryEventQueueCollector>();
 
@@ -87,7 +87,7 @@ namespace AltMediatR.Tests
         {
             var services = new ServiceCollection();
             services.AddAltMediator(s => { });
-            services.AddAltMediatorDdd();
+            services.AddDddIntegrationDdd();
             services.AddTransactionalOutboxBehavior();
             services.AddScoped<IEventQueueCollector, InMemoryEventQueueCollector>();
             services.AddSingleton<IIntegrationEventPublisher, FailingPublisher>();
