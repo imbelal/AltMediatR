@@ -4,13 +4,14 @@ AltMediatR is a lightweight, dependency-injection friendly mediator for .NET. Th
 
 - AltMediatR.Core: request/notification mediator, pre/post processors, and core pipeline behaviors (logging, validation, performance, retry).
 - AltMediatR.DDD: optional extensions that add CQRS markers (ICommand/IQuery), query caching, and domain/integration events with a transactional outbox.
+- AltMediatR.WebApiSample: minimal ASP.NET Core Web API demonstrating Core + DDD with EF Core InMemory, aggregates, domain/integration events, and in-memory publisher/outbox.
 
 ## Table of Contents
 
 - Overview
 - Features
 - Installation
-- Quick start
+- Quick start (Web API)
 - Requests and handlers
   - Commands (with/without response)
   - Queries (with caching)
@@ -21,7 +22,7 @@ AltMediatR is a lightweight, dependency-injection friendly mediator for .NET. Th
   - Built-in behaviors (Core vs DDD)
 - Pre/Post processors
 - Startup validation
-- Samples
+- Sample Web API
 
 ## Overview
 
@@ -51,20 +52,30 @@ AltMediatR promotes decoupled communication via the Mediator pattern.
 - Requires .NET 8.
 - Add the projects to your solution (AltMediatR.Core required; AltMediatR.DDD optional).
 
-## Quick start
+## Quick start (Web API)
+
+Program.cs setup using EF Core InMemory, Core + DDD, Swagger, and handler scanning:
 
 ```csharp
 using AltMediatR.Core.Extensions;
 using AltMediatR.DDD.Extensions;
-using Microsoft.Extensions.DependencyInjection;
+using AltMediatR.DDD.Abstractions;
+using AltMediatR.WebApiSample.Infrastructure;
+using Microsoft.EntityFrameworkCore;
 using System.Reflection;
 
-var services = new ServiceCollection();
-services.AddLogging();
-services.AddMemoryCache();
+var builder = WebApplication.CreateBuilder(args);
 
-// Core mediator + core behaviors
-services.AddAltMediator(s =>
+builder.Services.AddControllers();
+builder.Services.AddAuthorization();
+builder.Services.AddMemoryCache();
+
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(o => o.CustomSchemaIds(t => t.FullName));
+
+builder.Services.AddDbContext<AppDbContext>(o => o.UseInMemoryDatabase("app-db"));
+
+builder.Services.AddAltMediator(s =>
 {
     s.AddLoggingBehavior()
      .AddValidationBehavior()
@@ -72,38 +83,51 @@ services.AddAltMediator(s =>
      .AddRetryBehavior();
 });
 
-// DDD layer (optional)
-services.AddAltMediatorDdd();
-services.AddCachingForQueries(o => { o.KeyPrefix = "app:"; });
-services.AddTransactionalOutboxBehavior();
+builder.Services.AddAltMediatorDdd()
+                .AddTransactionalOutboxBehavior()
+                .AddInMemoryIntegrationEventPublisher()
+                .AddInMemoryOutboxStore();
 
-// Register an event collector (choose one):
-// services.AddScoped<IEventQueueCollector, EfCoreEventQueueCollector<MyDbContext>>();
-// or
-// services.AddScoped<IEventQueueCollector, InMemoryEventQueueCollector>();
+builder.Services.AddCachingForQueries(_ => { });
 
-// Register handlers by assembly scan
-services.RegisterHandlersFromAssembly(Assembly.GetExecutingAssembly());
+builder.Services.RegisterHandlersFromAssembly(Assembly.GetExecutingAssembly());
 
-// Optional: behavior ordering
-services.AddSingleton(new AltMediatR.Core.Configurations.PipelineConfig
+builder.Services.AddScoped<IEventQueueCollector, EfChangeTrackerEventCollector>();
+builder.Services.AddScoped<ITransactionManager, EfTransactionManager>();
+
+var app = builder.Build();
+
+if (app.Environment.IsDevelopment())
 {
-    BehaviorsInOrder =
-    {
-        typeof(AltMediatR.Core.Behaviors.LoggingBehavior<,>),
-        typeof(AltMediatR.Core.Behaviors.ValidationBehavior<,>),
-        typeof(AltMediatR.Core.Behaviors.PerformanceBehavior<,>),
-        typeof(AltMediatR.Core.Behaviors.RetryBehavior<,>),
-        typeof(AltMediatR.DDD.Behaviors.CachingBehavior<,>)
-    }
-});
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
-// Validate configuration (fail fast)
-services.ValidateAltMediatorConfiguration(validateBehaviors: true);
-
-var provider = services.BuildServiceProvider();
-var mediator = provider.GetRequiredService<AltMediatR.Core.Abstractions.IMediator>();
+app.MapControllers();
+app.Run();
 ```
+
+Controllers (example):
+
+```csharp
+[ApiController]
+[Route("api/users")]
+public sealed class UsersController : ControllerBase
+{
+    private readonly IMediator _mediator;
+    public UsersController(IMediator mediator) => _mediator = mediator;
+
+    [HttpPost]
+    public Task<string> Create(CreateUserRequest req, CancellationToken ct)
+        => _mediator.SendAsync(new CreateUserCommand(req.Name), ct);
+
+    [HttpGet]
+    public Task<IReadOnlyList<UserDto>> GetAll(CancellationToken ct)
+        => _mediator.SendAsync(new GetUsersQuery(), ct);
+}
+```
+
+Aggregates raise events via `AggregateRootBase` and are tracked by EF’s ChangeTracker; the transactional behavior publishes domain events (via mediator) and publishes or outboxes integration events.
 
 ## Requests and handlers
 
@@ -197,11 +221,9 @@ await mediator.PublishAsync(new UserCreatedNotification { UserId = id });
 ```
 
 - DDD domain/integration events:
-  - Domain events implement `AltMediatR.DDD.Abstractions.IDomainEvent` (also handled via `INotificationHandler<T>`).
-  - Integration events implement `AltMediatR.DDD.Abstractions.IIntegrationEvent`.
-  - Register `services.AddTransactionalOutboxBehavior()` and enqueue domain/integration events inside your handlers. The transactional behavior will publish domain events (via mediator.PublishAsync) and publish or outbox integration events.
-
-See the Samples project for concrete usage.
+  - Domain events implement `AltMediatR.DDD.Abstractions.IDomainEvent` and handlers can implement `IDomainEventHandler<T>`.
+  - Integration events implement `AltMediatR.DDD.Abstractions.IIntegrationEvent` and (optionally) `IIntegrationEventHandler<T>` for in-process handling.
+  - Register `services.AddTransactionalOutboxBehavior()` and raise events from aggregates (`AggregateRootBase`). The transactional behavior collects events, publishes domain events (via mediator), and publishes or outboxes integration events.
 
 ## Pipeline behaviors
 
@@ -210,7 +232,7 @@ See the Samples project for concrete usage.
 Use the helpers in `AltMediatR.Core.Extensions.MediatorExtensions` (Core) and `AltMediatR.DDD.Extensions.DddExtensions` (DDD):
 
 - Core: `AddLoggingBehavior()`, `AddValidationBehavior()`, `AddPerformanceBehavior()`, `AddRetryBehavior()`
-- DDD: `AddCachingForQueries([options])`, `AddTransactionalOutboxBehavior()`
+- DDD: `AddCachingForQueries([options])`, `AddTransactionalOutboxBehavior()`, `AddInMemoryOutboxStore()`, `AddInMemoryIntegrationEventPublisher()`
 
 ### Behavior ordering
 
@@ -225,7 +247,7 @@ Provide a `PipelineConfig` singleton with `BehaviorsInOrder` listing open generi
   - RetryBehavior: simple retry with logging on exceptions.
 - DDD
   - CachingBehavior: caches only `IQuery<T>` requests implementing `ICacheable`.
-  - TransactionalEventDispatcherBehavior: wraps handler in a transaction, dispatches domain events, and publishes integration events; on publish failure, stores events in `IIntegrationOutbox`.
+  - TransactionalEventDispatcherBehavior: wraps handler in a transaction, dispatches domain events (via mediator PublishAsync), and publishes integration events; on publish failure, stores events in `IOutboxStore`.
 
 ## Pre/Post processors
 
@@ -242,10 +264,22 @@ Call `services.ValidateAltMediatorConfiguration(validateBehaviors: true)` after 
 - Duplicate behavior registrations.
 - Missing behaviors listed in `PipelineConfig.BehaviorsInOrder`.
 
-## Samples
+## Sample Web API
 
-See the `AltMediatR.Samples` project for:
+This repo includes `AltMediatR.WebApiSample`, showing:
 
-- DI setup, handler registration, and behavior configuration (Core + DDD).
-- Example command/query/void handlers and pre/post processors.
-- Domain/integration events with a console publisher and in-memory outbox.
+- DI setup for Core + DDD with EF Core InMemory
+- Aggregates (User, Order) raising domain/integration events
+- EF ChangeTracker-based event collection
+- Transactional outbox behavior with in-memory publisher/outbox
+- Query caching for list endpoints
+- Swagger UI
+
+Run locally:
+
+```powershell
+# from repo root
+ dotnet run --project .\AltMediatR.WebApiSample\AltMediatR.WebApiSample.csproj
+# Swagger UI
+ start http://localhost:5152/swagger
+```

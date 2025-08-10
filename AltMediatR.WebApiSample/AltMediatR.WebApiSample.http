@@ -1,0 +1,6 @@
+@AltMediatR.WebApiSample_HostAddress = http://localhost:5152
+
+GET {{AltMediatR.WebApiSample_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

@@ -88,7 +88,7 @@ namespace AltMediatR.DDD.Behaviors
         private async Task DispatchDomainAsync(IEnumerable<IDomainEvent> events, CancellationToken ct)
         {
             foreach (var domainEvent in events)
-                await _mediator.PublishAsync(domainEvent, ct).ConfigureAwait(false);
+                await _mediator.PublishAsync((dynamic)domainEvent, ct).ConfigureAwait(false);
         }
 
         private async Task DispatchIntegrationAsync(IEnumerable<IIntegrationEvent> events, CancellationToken ct)
