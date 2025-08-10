@@ -3,6 +3,7 @@ using AltMediatR.Core.Behaviors;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using AltMediatR.Core.Configurations;
+using AltMediatR.Core.Infrastructure;
 
 namespace AltMediatR.Core.Extensions
 {
@@ -22,6 +23,10 @@ namespace AltMediatR.Core.Extensions
 
             // Register a default validator so ValidationBehavior can resolve when no custom validator is provided
             services.AddTransient(typeof(IValidator<>), typeof(NoOpValidator<>));
+
+            // Domain/Integration queues (scoped)
+            services.AddScoped<IDomainEventQueue, DomainEventQueue>();
+            services.AddScoped<IIntegrationEventQueue, IntegrationEventQueue>();
 
             return services;
         }
@@ -99,6 +104,12 @@ namespace AltMediatR.Core.Extensions
             services.AddSingleton(options);
             return services.AddCachingBehavior();
         }
+
+        public static IServiceCollection AddDomainEventsDispatchBehavior(this IServiceCollection services)
+            => services.AddPipelineBehavior(typeof(DomainEventsDispatchBehavior<,>));
+
+        public static IServiceCollection AddTransactionalOutboxBehavior(this IServiceCollection services)
+            => services.AddPipelineBehavior(typeof(TransactionalOutboxBehavior<,>));
     }
 
 }

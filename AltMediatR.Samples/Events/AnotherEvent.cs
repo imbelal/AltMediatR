@@ -2,9 +2,10 @@
 
 namespace AltMediatR.Samples.Events
 {
-    public class AnotherEvent : INotification
+    public class AnotherEvent : IIntegrationEvent
     {
-        public string Message { get; set; }
+        public Guid Id { get; init; } = Guid.NewGuid();
+        public required string Message { get; set; }
     }
 
     public class AnotherEventHandler : INotificationHandler<AnotherEvent>

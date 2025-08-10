@@ -223,6 +223,26 @@ namespace AltMediatR.Core.Mediator
             }
         }
 
+        /// <summary>
+        /// Publish an in-process domain event via INotification handlers.
+        /// </summary>
+        public Task PublishDomainEventAsync<TDomainEvent>(TDomainEvent @event, CancellationToken cancellationToken = default)
+            where TDomainEvent : IDomainEvent
+            => PublishAsync(@event, cancellationToken);
+
+        /// <summary>
+        /// Publish an integration event via the configured IIntegrationEventPublisher.
+        /// This does not require any local handlers; the publisher is responsible for transport.
+        /// </summary>
+        public async Task PublishIntegrationEventAsync<TIntegrationEvent>(TIntegrationEvent @event, CancellationToken cancellationToken = default)
+            where TIntegrationEvent : IIntegrationEvent
+        {
+            if (@event == null) throw new ArgumentNullException(nameof(@event));
+            var publisher = _serviceProvider.GetService<IIntegrationEventPublisher>()
+                ?? throw new InvalidOperationException("No IIntegrationEventPublisher is registered. Register an implementation to publish integration events.");
+            await publisher.PublishAsync(@event, cancellationToken).ConfigureAwait(false);
+        }
+
     }
 
 }

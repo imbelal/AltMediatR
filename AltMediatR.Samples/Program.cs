@@ -6,6 +6,7 @@ using AltMediatR.Samples.Processors;
 using AltMediatR.Samples.Queries;
 using Microsoft.Extensions.DependencyInjection;
 using System.Reflection;
+using AltMediatR.Samples.Infrastructure;
 
 
 var services = new ServiceCollection();
@@ -21,11 +22,18 @@ services.AddAltMediator(s =>
     .AddValidationBehavior()
     .AddPerformanceBehavior()
     .AddRetryBehavior()
-    .AddCachingForQueries(o => { o.DefaultTtl = TimeSpan.FromMinutes(2); o.KeyPrefix = "sample:"; });
+    .AddCachingForQueries(o => { o.DefaultTtl = TimeSpan.FromMinutes(2); o.KeyPrefix = "sample:"; })
+    .AddDomainEventsDispatchBehavior()
+    .AddTransactionalOutboxBehavior();
 });
 services.RegisterHandlersFromAssembly(Assembly.GetExecutingAssembly());
 services.RegisterRequestPreProcessor(typeof(LoggingPreProcessor<>));
 services.RegisterRequestPostProcessor(typeof(LoggingPostProcessor<,>));
+
+// Infrastructure for demo
+services.AddSingleton<IIntegrationEventPublisher, ConsoleIntegrationEventPublisher>();
+services.AddSingleton<ITransactionManager, NoOpTransactionManager>();
+services.AddSingleton<IIntegrationOutbox, InMemoryIntegrationOutbox>();
 
 // Validate AltMediator configuration (fail fast if duplicates or behavior issues)
 services.ValidateAltMediatorConfiguration(validateBehaviors: true);
@@ -33,7 +41,7 @@ services.ValidateAltMediatorConfiguration(validateBehaviors: true);
 var provider = services.BuildServiceProvider();
 var mediator = provider.GetRequiredService<IMediator>();
 
-// Sample command: Create user
+// Sample command: Create user (will queue domain + integration events)
 var userId = await mediator.SendAsync(new CreateUserCommand { Name = "John Doe" });
 Console.WriteLine($"User created with ID: {userId}");
 
@@ -45,15 +53,15 @@ Console.WriteLine(userInfo);
 await mediator.SendAsync(new DeleteUserCommand { UserId = userId });
 Console.WriteLine("Delete completed");
 
-// Sample events
+// Additionally publish simple sample events
 var sampleEvent = new SampleEvent()
 {
     Message = $"Hello from {nameof(SampleEvent)}"
 };
-await mediator.PublishAsync(sampleEvent);
+await mediator.PublishDomainEventAsync(sampleEvent);
 
 var anotherEvent = new AnotherEvent()
 {
     Message = $"Hello from {nameof(AnotherEvent)}"
 };
-await mediator.PublishAsync(anotherEvent);
+await mediator.PublishIntegrationEventAsync(anotherEvent);
