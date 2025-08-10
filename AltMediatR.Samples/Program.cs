@@ -27,6 +27,9 @@ services.RegisterHandlersFromAssembly(Assembly.GetExecutingAssembly());
 services.RegisterRequestPreProcessor(typeof(LoggingPreProcessor<>));
 services.RegisterRequestPostProcessor(typeof(LoggingPostProcessor<,>));
 
+// Validate AltMediator configuration (fail fast if duplicates or behavior issues)
+services.ValidateAltMediatorConfiguration(validateBehaviors: true);
+
 var provider = services.BuildServiceProvider();
 var mediator = provider.GetRequiredService<IMediator>();
 

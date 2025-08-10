@@ -41,6 +41,26 @@ namespace AltMediatR.Core.Extensions
         }
 
         /// <summary>
+        /// Adds AltMediator and immediately validates registrations. Set validateBehaviors=true to also validate behaviors.
+        /// </summary>
+        public static IServiceCollection AddAltMediatorWithValidation(this IServiceCollection services, bool validateBehaviors = false)
+        {
+            services.AddAltMediator();
+            services.ValidateAltMediatorConfiguration(validateBehaviors);
+            return services;
+        }
+
+        /// <summary>
+        /// Adds AltMediator with behaviors configured and immediately validates registrations.
+        /// </summary>
+        public static IServiceCollection AddAltMediatorWithValidation(this IServiceCollection services, Action<IServiceCollection> configureBehaviors, bool validateBehaviors = false)
+        {
+            services.AddAltMediator(configureBehaviors);
+            services.ValidateAltMediatorConfiguration(validateBehaviors);
+            return services;
+        }
+
+        /// <summary>
         /// Register an open-generic pipeline behavior type, e.g., typeof(LoggingBehavior<,>).
         /// </summary>
         public static IServiceCollection AddPipelineBehavior(this IServiceCollection services, Type openGenericBehaviorType)

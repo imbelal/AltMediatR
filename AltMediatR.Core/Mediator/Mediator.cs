@@ -96,8 +96,12 @@ namespace AltMediatR.Core.Mediator
                 await pre.ProcessAsync(request, cancellationToken).ConfigureAwait(false);
 
             // 2) Resolve the single handler for TRequest -> TResponse
-            var handler = _serviceProvider.GetService<IRequestHandler<TRequest, TResponse>>()
-                          ?? throw new InvalidOperationException($"Handler for {typeof(TRequest).Name} returning {typeof(TResponse).Name} not found. Ensure it is registered.");
+            var handlers = _serviceProvider.GetServices<IRequestHandler<TRequest, TResponse>>().ToList();
+            if (handlers.Count == 0)
+                throw new InvalidOperationException($"Handler for {typeof(TRequest).Name} returning {typeof(TResponse).Name} not found. Ensure it is registered.");
+            if (handlers.Count > 1)
+                throw new InvalidOperationException($"Multiple handlers found for {typeof(TRequest).Name} returning {typeof(TResponse).Name}. Exactly one handler must be registered. Found: {string.Join(", ", handlers.Select(h => h.GetType().FullName))}");
+            var handler = handlers[0];
 
             // Terminal delegate that calls the handler exactly once
             RequestHandlerDelegate<TResponse> next = () => handler.HandleAsync(request, cancellationToken);
@@ -153,8 +157,12 @@ namespace AltMediatR.Core.Mediator
                 await pre.ProcessAsync(request, cancellationToken).ConfigureAwait(false);
 
             // Resolve void handler
-            var handler = _serviceProvider.GetService<IRequestHandler<TRequest>>()
-                          ?? throw new InvalidOperationException($"Handler for {typeof(TRequest).Name} not found. Ensure it is registered.");
+            var handlers = _serviceProvider.GetServices<IRequestHandler<TRequest>>().ToList();
+            if (handlers.Count == 0)
+                throw new InvalidOperationException($"Handler for {typeof(TRequest).Name} not found. Ensure it is registered.");
+            if (handlers.Count > 1)
+                throw new InvalidOperationException($"Multiple handlers found for {typeof(TRequest).Name}. Exactly one handler must be registered. Found: {string.Join(", ", handlers.Select(h => h.GetType().FullName))}");
+            var handler = handlers[0];
 
             // Terminal delegate adapted to Unit for internal behaviors
             RequestHandlerDelegate<Unit> next = async () =>
