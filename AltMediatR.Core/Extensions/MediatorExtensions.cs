@@ -105,11 +105,8 @@ namespace AltMediatR.Core.Extensions
             return services.AddCachingBehavior();
         }
 
-        public static IServiceCollection AddDomainEventsDispatchBehavior(this IServiceCollection services)
-            => services.AddPipelineBehavior(typeof(DomainEventsDispatchBehavior<,>));
-
         public static IServiceCollection AddTransactionalOutboxBehavior(this IServiceCollection services)
-            => services.AddPipelineBehavior(typeof(TransactionalOutboxBehavior<,>));
+            => services.AddPipelineBehavior(typeof(TransactionalEventDispatcherBehavior<,>));
     }
 
 }

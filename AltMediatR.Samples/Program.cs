@@ -23,7 +23,6 @@ services.AddAltMediator(s =>
     .AddPerformanceBehavior()
     .AddRetryBehavior()
     .AddCachingForQueries(o => { o.DefaultTtl = TimeSpan.FromMinutes(2); o.KeyPrefix = "sample:"; })
-    .AddDomainEventsDispatchBehavior()
     .AddTransactionalOutboxBehavior();
 });
 services.RegisterHandlersFromAssembly(Assembly.GetExecutingAssembly());

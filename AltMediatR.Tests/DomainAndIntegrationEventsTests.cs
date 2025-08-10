@@ -15,7 +15,7 @@ namespace AltMediatR.Tests
         public async Task Should_Dispatch_Domain_And_Publish_Integration_Events()
         {
             var services = new ServiceCollection();
-            services.AddAltMediator(s => s.AddDomainEventsDispatchBehavior().AddTransactionalOutboxBehavior());
+            services.AddAltMediator(s => s.AddTransactionalOutboxBehavior());
 
             // Probe domain handler via Moq
             var domainHandler = new Mock<INotificationHandler<UserCreatedDomainEvent>>();
@@ -57,7 +57,7 @@ namespace AltMediatR.Tests
             InMemoryIntegrationOutbox.Clear();
 
             var services = new ServiceCollection();
-            services.AddAltMediator(s => s.AddDomainEventsDispatchBehavior().AddTransactionalOutboxBehavior());
+            services.AddAltMediator(s => s.AddTransactionalOutboxBehavior());
             services.AddSingleton<IIntegrationEventPublisher, FailingPublisher>();
             services.AddSingleton<ITransactionManager, NoOpTransactionManager>();
             services.AddSingleton<IIntegrationOutbox, InMemoryIntegrationOutbox>();

@@ -8,7 +8,7 @@ namespace AltMediatR.Core.Behaviors
     /// attempts to publish integration events; on publish failure, stores them in outbox and still commits the transaction.
     /// Rolls back on unhandled failure.
     /// </summary>
-    public sealed class TransactionalOutboxBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
+    public sealed class TransactionalEventDispatcherBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
         where TRequest : IRequest<TResponse>
     {
         private readonly ITransactionManager _txManager;
@@ -18,7 +18,7 @@ namespace AltMediatR.Core.Behaviors
         private readonly IIntegrationEventPublisher? _integrationPublisher;
         private readonly IIntegrationOutbox? _outbox;
 
-        public TransactionalOutboxBehavior(
+        public TransactionalEventDispatcherBehavior(
             ITransactionManager txManager,
             IMediator mediator,
             IDomainEventQueue domainQueue,
