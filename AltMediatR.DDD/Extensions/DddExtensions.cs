@@ -1,6 +1,6 @@
 using AltMediatR.DDD.Abstractions;
 using AltMediatR.DDD.Behaviors;
-using AltMediatR.Core.Configurations;
+using AltMediatR.DDD.Configurations;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace AltMediatR.DDD.Extensions

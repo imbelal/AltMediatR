@@ -2,7 +2,7 @@ using AltMediatR.Core.Abstractions;
 using AltMediatR.Core.Deligates;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
-using AltMediatR.Core.Configurations;
+using AltMediatR.DDD.Configurations;
 using AltMediatR.DDD.Abstractions;
 
 namespace AltMediatR.DDD.Behaviors

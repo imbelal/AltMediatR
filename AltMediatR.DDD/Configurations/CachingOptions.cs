@@ -1,4 +1,4 @@
-namespace AltMediatR.Core.Configurations
+namespace AltMediatR.DDD.Configurations
 {
     public class CachingOptions
     {
