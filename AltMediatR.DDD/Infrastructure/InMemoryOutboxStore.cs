@@ -3,6 +3,10 @@ using AltMediatR.DDD.Abstractions;
 
 namespace AltMediatR.DDD.Infrastructure
 {
+    /// <summary>
+    /// In-memory outbox store used for dev/test. Pair with an IOutboxProcessor (e.g., InMemoryOutboxProcessor)
+    /// to periodically publish pending integration events.
+    /// </summary>
     public sealed class InMemoryOutboxStore : IOutboxStore
     {
         private readonly ConcurrentDictionary<Guid, IIntegrationEvent> _pending = new();

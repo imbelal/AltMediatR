@@ -29,20 +29,29 @@ public class Program
         builder.Services.AddAltMediator(s => { });
         builder.Services.AddAltMediatorDdd()
                         .AddTransactionalOutboxBehavior()
-                        .AddInMemoryIntegrationEventPublisher()
-                        .AddInMemoryOutboxStore();
+                        .AddInMemoryOutboxStore()
+                        .AddInMemoryOutboxProcessor()
+                        .AddOutboxProcessorHostedService(TimeSpan.FromSeconds(5))
+                        .AddInMemoryInboundMessageProcessor()
+                        .UseInMemoryLoopbackPublisher();
 
         // Enable caching for queries
         builder.Services.AddCachingForQueries(_ => { /* can override defaults here */ });
 
-        // Register all handlers in this assembly
+        // Register core handlers (requests/notifications)
         builder.Services.RegisterHandlersFromAssembly(Assembly.GetExecutingAssembly());
+        // Register DDD integration event handlers
+        builder.Services.RegisterDddHandlersFromAssembly(Assembly.GetExecutingAssembly());
 
         // Use EF ChangeTracker-based event collector and transaction manager
         builder.Services.AddScoped<IEventQueueCollector, EfChangeTrackerEventCollector>();
         builder.Services.AddScoped<ITransactionManager, EfTransactionManager>();
 
         var app = builder.Build();
+
+        // Start inbound processor
+        var inbound = app.Services.GetRequiredService<AltMediatR.DDD.Infrastructure.InMemoryInboundMessageProcessor>();
+        _ = inbound.StartAsync(CancellationToken.None);
 
         // Configure the HTTP request pipeline.
         if (app.Environment.IsDevelopment())

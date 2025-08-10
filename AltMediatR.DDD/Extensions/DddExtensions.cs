@@ -2,6 +2,8 @@ using AltMediatR.DDD.Abstractions;
 using AltMediatR.DDD.Behaviors;
 using AltMediatR.DDD.Configurations;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using System;
 
 namespace AltMediatR.DDD.Extensions
 {
@@ -42,5 +44,23 @@ namespace AltMediatR.DDD.Extensions
         }
         public static IServiceCollection AddInMemoryIntegrationEventPublisher(this IServiceCollection services)
             => services.AddSingleton<IIntegrationEventPublisher, InMemoryPublisher>();
+
+        public static IServiceCollection AddInMemoryOutboxProcessor(this IServiceCollection services)
+            => services.AddSingleton<IOutboxProcessor, Infrastructure.InMemoryOutboxProcessor>();
+
+        public static IServiceCollection AddOutboxProcessorHostedService(this IServiceCollection services, TimeSpan? pollInterval = null)
+        {
+            var interval = pollInterval ?? TimeSpan.FromSeconds(10);
+            services.AddSingleton<IHostedService>(sp => new Infrastructure.OutboxProcessorHostedService(
+                sp.GetRequiredService<IOutboxProcessor>(),
+                interval));
+            return services;
+        }
+
+        public static IServiceCollection AddInMemoryInboundMessageProcessor(this IServiceCollection services)
+            => services.AddSingleton<IInboundMessageProcessor, Infrastructure.InMemoryInboundMessageProcessor>()
+                       .AddSingleton(sp => (Infrastructure.InMemoryInboundMessageProcessor)sp.GetRequiredService<IInboundMessageProcessor>());
+        public static IServiceCollection UseInMemoryLoopbackPublisher(this IServiceCollection services)
+            => services.AddSingleton<IIntegrationEventPublisher, Infrastructure.InMemoryLoopbackPublisher>();
     }
 }

@@ -27,3 +27,28 @@ public sealed class OrderPlacedDomainEventHandler : IDomainEventHandler<OrderPla
         return Task.CompletedTask;
     }
 }
+
+// Integration event handlers for inbound processing
+public sealed class UserCreatedIntegrationEventHandler : IIntegrationEventHandler<UserCreatedIntegrationEvent>
+{
+    private readonly ILogger<UserCreatedIntegrationEventHandler> _logger;
+    public UserCreatedIntegrationEventHandler(ILogger<UserCreatedIntegrationEventHandler> logger) => _logger = logger;
+
+    public Task HandleAsync(UserCreatedIntegrationEvent @event, CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("[INTEGRATION] User created received: {UserId} - {Name}", @event.UserId, @event.Name);
+        return Task.CompletedTask;
+    }
+}
+
+public sealed class OrderPlacedIntegrationEventHandler : IIntegrationEventHandler<OrderPlacedIntegrationEvent>
+{
+    private readonly ILogger<OrderPlacedIntegrationEventHandler> _logger;
+    public OrderPlacedIntegrationEventHandler(ILogger<OrderPlacedIntegrationEventHandler> logger) => _logger = logger;
+
+    public Task HandleAsync(OrderPlacedIntegrationEvent @event, CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("[INTEGRATION] Order placed received: {OrderId} for User {UserId} Total {Total}", @event.OrderId, @event.UserId, @event.Total);
+        return Task.CompletedTask;
+    }
+}
