@@ -2,40 +2,25 @@
 using AltMediatR.Core.Behaviors;
 using AltMediatR.Core.Deligates;
 using Microsoft.Extensions.Logging;
+using Moq;
 
 namespace AltMediatR.Tests
 {
     public class SampleRetryRequest : IRequest<string>
     {
-        public string Payload { get; set; }
+        public required string Payload { get; set; }
     }
 
     public class RetryBehaviorTests
     {
-        private readonly ILogger<RetryBehavior<SampleRetryRequest, string>> _logger;
-
-        public RetryBehaviorTests()
-        {
-            // Use a simple console logger
-            using var loggerFactory = LoggerFactory.Create(builder =>
-            {
-                builder.AddSimpleConsole(options =>
-                {
-                    options.IncludeScopes = true;
-                    options.SingleLine = true;
-                    options.TimestampFormat = "hh:mm:ss ";
-                });
-            });
-
-            _logger = loggerFactory.CreateLogger<RetryBehavior<SampleRetryRequest, string>>();
-        }
+        private readonly Mock<ILogger<RetryBehavior<SampleRetryRequest, string>>> _loggerMock = new(MockBehavior.Loose);
 
         [Fact]
         public async Task Handle_ReturnsResponse_WhenNoException()
         {
             // Arrange
             var request = new SampleRetryRequest { Payload = "Hello" };
-            var behavior = new RetryBehavior<SampleRetryRequest, string>(_logger);
+            var behavior = new RetryBehavior<SampleRetryRequest, string>(_loggerMock.Object);
 
             RequestHandlerDelegate<string> next = () => Task.FromResult("Success");
 
@@ -44,6 +29,7 @@ namespace AltMediatR.Tests
 
             // Assert
             Assert.Equal("Success", result);
+            _loggerMock.VerifyNoOtherCalls();
         }
 
         [Fact]
@@ -51,7 +37,7 @@ namespace AltMediatR.Tests
         {
             // Arrange
             var request = new SampleRetryRequest { Payload = "RetryMe" };
-            var behavior = new RetryBehavior<SampleRetryRequest, string>(_logger);
+            var behavior = new RetryBehavior<SampleRetryRequest, string>(_loggerMock.Object);
 
             int attempts = 0;
 
@@ -69,14 +55,30 @@ namespace AltMediatR.Tests
             // Assert
             Assert.Equal("Recovered", result);
             Assert.Equal(3, attempts);
+            _loggerMock.Verify(
+                x => x.Log(
+                    LogLevel.Error,
+                    It.IsAny<EventId>(),
+                    It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Attempt 1 failed")),
+                    It.IsAny<Exception>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                Times.Once);
+            _loggerMock.Verify(
+                x => x.Log(
+                    LogLevel.Error,
+                    It.IsAny<EventId>(),
+                    It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Attempt 2 failed")),
+                    It.IsAny<Exception>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                Times.Once);
         }
 
         [Fact]
         public async Task Handle_FailsAfterMaxRetries()
         {
             // Arrange
-            var request = new SampleRetryRequest();
-            var behavior = new RetryBehavior<SampleRetryRequest, string>(_logger);
+            var request = new SampleRetryRequest { Payload = "x" };
+            var behavior = new RetryBehavior<SampleRetryRequest, string>(_loggerMock.Object);
 
             int attempts = 0;
 
@@ -92,6 +94,22 @@ namespace AltMediatR.Tests
 
             Assert.Equal("Always fails", ex.Message);
             Assert.Equal(3, attempts); // 3 retries
+            _loggerMock.Verify(
+                x => x.Log(
+                    LogLevel.Error,
+                    It.IsAny<EventId>(),
+                    It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Attempt 1 failed")),
+                    It.IsAny<Exception>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                Times.Once);
+            _loggerMock.Verify(
+                x => x.Log(
+                    LogLevel.Error,
+                    It.IsAny<EventId>(),
+                    It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Attempt 2 failed")),
+                    It.IsAny<Exception>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                Times.Once);
         }
     }
 }

@@ -1,6 +1,7 @@
 ﻿using AltMediatR.Core.Abstractions;
 using AltMediatR.Core.Behaviors;
 using AltMediatR.Core.Deligates;
+using Moq;
 using System.ComponentModel.DataAnnotations;
 using ValidationResult = AltMediatR.Core.Behaviors.ValidationResult;
 
@@ -8,21 +9,7 @@ namespace AltMediatR.Tests
 {
     public class SampleValidationRequest : IRequest<string>
     {
-        public string Name { get; set; }
-    }
-
-    // Simple validator implementation without using third-party libs
-    public class SampleValidationRequestValidator : IValidator<SampleValidationRequest>
-    {
-        public Task<ValidationResult> ValidateAsync(SampleValidationRequest request, CancellationToken cancellationToken = default)
-        {
-            var result = new ValidationResult();
-
-            if (string.IsNullOrWhiteSpace(request.Name))
-                result.Errors.Add("Name is required.");
-
-            return Task.FromResult(result);
-        }
+        public required string Name { get; set; }
     }
 
     public class ValidationBehaviorTests
@@ -31,9 +18,12 @@ namespace AltMediatR.Tests
         public async Task Handle_ThrowsValidationException_WhenInvalid()
         {
             // Arrange
-            var validator = new SampleValidationRequestValidator();
-            var behavior = new ValidationBehavior<SampleValidationRequest, string>(validator);
+            var validator = new Mock<IValidator<SampleValidationRequest>>();
+            validator
+                .Setup(v => v.ValidateAsync(It.IsAny<SampleValidationRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ValidationResult { Errors = { "Name is required." } });
 
+            var behavior = new ValidationBehavior<SampleValidationRequest, string>(validator.Object);
             var invalidRequest = new SampleValidationRequest { Name = "" };
 
             RequestHandlerDelegate<string> next = () => Task.FromResult("Should not be called");
@@ -43,15 +33,19 @@ namespace AltMediatR.Tests
                 behavior.HandleAsync(invalidRequest, CancellationToken.None, next));
 
             Assert.Contains("Name is required", exception.Message);
+            validator.Verify(v => v.ValidateAsync(It.IsAny<SampleValidationRequest>(), It.IsAny<CancellationToken>()), Times.Once);
         }
 
         [Fact]
         public async Task Handle_CallsNext_WhenValid()
         {
             // Arrange
-            var validator = new SampleValidationRequestValidator();
-            var behavior = new ValidationBehavior<SampleValidationRequest, string>(validator);
+            var validator = new Mock<IValidator<SampleValidationRequest>>();
+            validator
+                .Setup(v => v.ValidateAsync(It.IsAny<SampleValidationRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ValidationResult());
 
+            var behavior = new ValidationBehavior<SampleValidationRequest, string>(validator.Object);
             var validRequest = new SampleValidationRequest { Name = "Valid" };
 
             bool nextWasCalled = false;
@@ -67,6 +61,7 @@ namespace AltMediatR.Tests
             // Assert
             Assert.True(nextWasCalled);
             Assert.Equal("Success", result);
+            validator.Verify(v => v.ValidateAsync(It.IsAny<SampleValidationRequest>(), It.IsAny<CancellationToken>()), Times.Once);
         }
     }
 }

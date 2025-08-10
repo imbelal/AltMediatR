@@ -3,26 +3,21 @@ using AltMediatR.Core.Behaviors;
 using AltMediatR.Core.Deligates;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
-using System.Text.Json;
+using Moq;
 
 namespace AltMediatR.Tests
 {
-    public class SampleRequest : IRequest<string>
+    public class SampleRequest : IQuery<string>, ICacheable
     {
-        public string Name { get; set; }
+        public required string Name { get; set; }
+        public string CacheKey => $"SampleRequest:{Name}";
+        public TimeSpan? AbsoluteExpirationRelativeToNow => null;
     }
 
     public class CachingBehaviorTests
     {
-        private readonly IMemoryCache _memoryCache;
-        private readonly ILogger<CachingBehavior<SampleRequest, string>> _logger;
-
-        public CachingBehaviorTests()
-        {
-            _logger = NullLogger<CachingBehavior<SampleRequest, string>>.Instance;
-            _memoryCache = new MemoryCache(new MemoryCacheOptions());
-        }
+        private readonly IMemoryCache _memoryCache = new MemoryCache(new MemoryCacheOptions());
+        private readonly Mock<ILogger<CachingBehavior<SampleRequest, string>>> _loggerMock = new(MockBehavior.Loose);
 
         [Fact]
         public async Task Handle_ReturnsCachedResponse_WhenExistsInCache()
@@ -30,15 +25,11 @@ namespace AltMediatR.Tests
             // Arrange
             var request = new SampleRequest { Name = "FromCache" };
             var expected = "Cached Response";
+            _memoryCache.Set(request.CacheKey, expected);
 
-            var cacheKey = $"{typeof(SampleRequest).FullName}:{JsonSerializer.Serialize(request)}";
-            _memoryCache.Set(cacheKey, expected);
-
-            var behavior = new CachingBehavior<SampleRequest, string>(_memoryCache, _logger);
+            var behavior = new CachingBehavior<SampleRequest, string>(_memoryCache, _loggerMock.Object);
 
             bool nextWasCalled = false;
-
-            // This delegate should not be called
             RequestHandlerDelegate<string> next = () =>
             {
                 nextWasCalled = true;
@@ -51,6 +42,14 @@ namespace AltMediatR.Tests
             // Assert
             Assert.False(nextWasCalled);
             Assert.Equal(expected, result);
+            _loggerMock.Verify(
+                x => x.Log(
+                    LogLevel.Information,
+                    It.IsAny<EventId>(),
+                    It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("[CACHE] Hit")),
+                    It.IsAny<Exception>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                Times.Once);
         }
 
         [Fact]
@@ -60,23 +59,25 @@ namespace AltMediatR.Tests
             var request = new SampleRequest { Name = "FreshRequest" };
             var expected = "Generated Response";
 
-            var behavior = new CachingBehavior<SampleRequest, string>(_memoryCache, _logger);
+            var behavior = new CachingBehavior<SampleRequest, string>(_memoryCache, _loggerMock.Object);
 
-            RequestHandlerDelegate<string> next = () =>
-            {
-                return Task.FromResult(expected);
-            };
+            RequestHandlerDelegate<string> next = () => Task.FromResult(expected);
 
             // Act
             var result = await behavior.HandleAsync(request, CancellationToken.None, next);
 
             // Assert
             Assert.Equal(expected, result);
-
-            var cacheKey = $"{typeof(SampleRequest).FullName}:{JsonSerializer.Serialize(request)}";
-            var success = _memoryCache.TryGetValue(cacheKey, out string cached);
-            Assert.True(success);
+            Assert.True(_memoryCache.TryGetValue(request.CacheKey, out string? cached));
             Assert.Equal(expected, cached);
+            _loggerMock.Verify(
+                x => x.Log(
+                    LogLevel.Information,
+                    It.IsAny<EventId>(),
+                    It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("[CACHE] Hit")),
+                    It.IsAny<Exception>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                Times.Never);
         }
     }
 }

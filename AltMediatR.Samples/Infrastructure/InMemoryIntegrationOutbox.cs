@@ -14,6 +14,20 @@ namespace AltMediatR.Samples.Infrastructure
             return Task.CompletedTask;
         }
 
+        // Test helpers
+        public static void Clear()
+        {
+            while (_backlog.TryDequeue(out _)) { }
+        }
+
+        public static IReadOnlyList<IIntegrationEvent> DrainAll()
+        {
+            var list = new List<IIntegrationEvent>();
+            while (_backlog.TryDequeue(out var evt))
+                list.Add(evt);
+            return list;
+        }
+
         // Helper for demo to drain outbox
         public static IEnumerable<IIntegrationEvent> Drain()
         {
