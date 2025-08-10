@@ -3,7 +3,6 @@ using AltMediatR.Core.Behaviors;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using AltMediatR.Core.Configurations;
-using AltMediatR.Core.Infrastructure;
 
 namespace AltMediatR.Core.Extensions
 {
@@ -24,10 +23,6 @@ namespace AltMediatR.Core.Extensions
             // Register a default validator so ValidationBehavior can resolve when no custom validator is provided
             services.AddTransient(typeof(IValidator<>), typeof(NoOpValidator<>));
 
-            // Domain/Integration queues (scoped)
-            services.AddScoped<IDomainEventQueue, DomainEventQueue>();
-            services.AddScoped<IIntegrationEventQueue, IntegrationEventQueue>();
-
             return services;
         }
 
@@ -35,7 +30,7 @@ namespace AltMediatR.Core.Extensions
         /// Adds AltMediator and allows the caller to configure pipeline behaviors explicitly.
         /// Example:
         /// services.AddAltMediator(s => {
-        ///     s.AddLoggingBehavior().AddValidationBehavior().AddPerformanceBehavior().AddRetryBehavior().AddCachingBehavior();
+        ///     s.AddLoggingBehavior().AddValidationBehavior().AddPerformanceBehavior().AddRetryBehavior();
         /// });
         /// </summary>
         public static IServiceCollection AddAltMediator(this IServiceCollection services, Action<IServiceCollection> configureBehaviors)
@@ -89,24 +84,6 @@ namespace AltMediatR.Core.Extensions
 
         public static IServiceCollection AddRetryBehavior(this IServiceCollection services)
             => services.AddPipelineBehavior(typeof(RetryBehavior<,>));
-
-        public static IServiceCollection AddCachingBehavior(this IServiceCollection services)
-            => services.AddPipelineBehavior(typeof(CachingBehavior<,>));
-
-        // Restrict caching to queries (behavior itself already bypasses non-queries)
-        public static IServiceCollection AddCachingForQueries(this IServiceCollection services)
-            => services.AddCachingBehavior();
-
-        public static IServiceCollection AddCachingForQueries(this IServiceCollection services, Action<CachingOptions> configure)
-        {
-            var options = new CachingOptions();
-            configure?.Invoke(options);
-            services.AddSingleton(options);
-            return services.AddCachingBehavior();
-        }
-
-        public static IServiceCollection AddTransactionalOutboxBehavior(this IServiceCollection services)
-            => services.AddPipelineBehavior(typeof(TransactionalEventDispatcherBehavior<,>));
     }
 
 }

@@ -1,10 +1,11 @@
 ﻿using AltMediatR.Core.Abstractions;
+using AltMediatR.DDD.Abstractions;
 
 namespace AltMediatR.Samples.Queries
 {
     public class GetUserQuery : IQuery<string>, ICacheable
     {
-        public string UserId { get; set; }
+        public required string UserId { get; set; }
 
         public string CacheKey => $"GetUser:{UserId}";
         public TimeSpan? AbsoluteExpirationRelativeToNow => TimeSpan.FromMinutes(2);

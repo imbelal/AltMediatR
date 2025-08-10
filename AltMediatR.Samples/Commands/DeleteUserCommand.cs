@@ -2,9 +2,9 @@ using AltMediatR.Core.Abstractions;
 
 namespace AltMediatR.Samples.Commands
 {
-    public class DeleteUserCommand : ICommand
+    public class DeleteUserCommand : IRequest
     {
-        public string UserId { get; set; }
+        public required string UserId { get; set; }
     }
 
     public class DeleteUserHandler : IRequestHandler<DeleteUserCommand>

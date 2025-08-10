@@ -8,7 +8,7 @@ namespace AltMediatR.Tests
 {
     public class VoidPipelineTests
     {
-        public sealed class Cmd : ICommand { }
+        public sealed class Cmd : IRequest { }
 
         [Fact]
         public async Task Should_Invoke_Void_Handler_Once()

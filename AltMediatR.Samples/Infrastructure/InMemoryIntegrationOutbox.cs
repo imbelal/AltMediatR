@@ -1,4 +1,5 @@
 using AltMediatR.Core.Abstractions;
+using AltMediatR.DDD.Abstractions;
 using System.Collections.Concurrent;
 
 namespace AltMediatR.Samples.Infrastructure

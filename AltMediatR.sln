@@ -1,5 +1,4 @@
-﻿
-Microsoft Visual Studio Solution File, Format Version 12.00
+﻿Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.13.35825.156 d17.13
 MinimumVisualStudioVersion = 10.0.40219.1
@@ -8,6 +7,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AltMediatR.Samples", "AltMediatR.Samples\AltMediatR.Samples.csproj", "{2907E38C-DC4F-40AB-AFD8-CAC28E3805F2}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AltMediatR.Tests", "AltMediatR.Tests\AltMediatR.Tests.csproj", "{CFC4EF9C-04F0-4DB5-AA33-1FE07CB875BA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AltMediatR.DDD", "AltMediatR.DDD\AltMediatR.DDD.csproj", "{B2A0D0D3-79D2-4F59-8E7C-6D0D4E2D9C77}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -27,6 +28,10 @@ Global
 		{CFC4EF9C-04F0-4DB5-AA33-1FE07CB875BA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{CFC4EF9C-04F0-4DB5-AA33-1FE07CB875BA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{CFC4EF9C-04F0-4DB5-AA33-1FE07CB875BA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B2A0D0D3-79D2-4F59-8E7C-6D0D4E2D9C77}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B2A0D0D3-79D2-4F59-8E7C-6D0D4E2D9C77}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B2A0D0D3-79D2-4F59-8E7C-6D0D4E2D9C77}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B2A0D0D3-79D2-4F59-8E7C-6D0D4E2D9C77}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

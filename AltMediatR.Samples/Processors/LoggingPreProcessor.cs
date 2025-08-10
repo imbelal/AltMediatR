@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 
 namespace AltMediatR.Samples.Processors
 {
-    class LoggingPreProcessor<TRequest> : IRequestPreProcessor<TRequest>
+    public class LoggingPreProcessor<TRequest> : IRequestPreProcessor<TRequest>
     {
         private readonly ILogger<LoggingPreProcessor<TRequest>> _logger;
 

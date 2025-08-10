@@ -1,4 +1,4 @@
-using AltMediatR.Core.Abstractions;
+using AltMediatR.DDD.Abstractions;
 using System.Text.Json;
 
 namespace AltMediatR.Samples.Infrastructure

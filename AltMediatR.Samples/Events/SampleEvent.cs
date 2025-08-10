@@ -2,7 +2,7 @@
 
 namespace AltMediatR.Samples.Events
 {
-    public class SampleEvent : IDomainEvent
+    public class SampleEvent : INotification
     {
         public required string Message { get; set; }
     }

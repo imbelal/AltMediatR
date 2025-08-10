@@ -1,7 +1,4 @@
-using System.Threading;
-using System.Threading.Tasks;
-
-namespace AltMediatR.Core.Abstractions
+namespace AltMediatR.DDD.Abstractions
 {
     /// <summary>
     /// Abstraction for starting and controlling a database transaction.

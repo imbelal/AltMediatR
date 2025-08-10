@@ -1,7 +1,8 @@
 using AltMediatR.Core.Abstractions;
 using AltMediatR.Core.Deligates;
+using AltMediatR.DDD.Abstractions;
 
-namespace AltMediatR.Core.Behaviors
+namespace AltMediatR.DDD.Behaviors
 {
     /// <summary>
     /// Wraps request handling in a DB transaction; dispatches domain events before commit;
@@ -45,7 +46,7 @@ namespace AltMediatR.Core.Behaviors
                 // 1) Dispatch domain events in-process (participates in same transaction)
                 foreach (var domainEvent in _domainQueue.DequeueAll())
                 {
-                    await _mediator.PublishDomainEventAsync(domainEvent, cancellationToken).ConfigureAwait(false);
+                    await _mediator.PublishAsync(domainEvent, cancellationToken).ConfigureAwait(false);
                 }
 
                 // 2) Try publishing integration events; on failure, save to outbox

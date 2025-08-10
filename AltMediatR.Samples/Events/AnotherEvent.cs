@@ -2,15 +2,13 @@
 
 namespace AltMediatR.Samples.Events
 {
-    public class AnotherEvent : IIntegrationEvent
+    public class AnotherEvent : INotification
     {
-        public Guid Id { get; init; } = Guid.NewGuid();
         public required string Message { get; set; }
     }
 
     public class AnotherEventHandler : INotificationHandler<AnotherEvent>
     {
-
         public async Task HandleAsync(AnotherEvent @event, CancellationToken cancellationToken)
         {
             // Log the received event's message

@@ -14,6 +14,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AltMediatR.Core\AltMediatR.Core.csproj" />
+    <ProjectReference Include="..\AltMediatR.DDD\AltMediatR.DDD.csproj" />
   </ItemGroup>
 
 </Project>

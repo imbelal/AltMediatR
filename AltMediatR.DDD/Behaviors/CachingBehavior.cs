@@ -1,10 +1,11 @@
-﻿using AltMediatR.Core.Abstractions;
+using AltMediatR.Core.Abstractions;
 using AltMediatR.Core.Deligates;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using AltMediatR.Core.Configurations;
+using AltMediatR.DDD.Abstractions;
 
-namespace AltMediatR.Core.Behaviors
+namespace AltMediatR.DDD.Behaviors
 {
     public class CachingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
         where TRequest : IRequest<TResponse>
@@ -22,13 +23,11 @@ namespace AltMediatR.Core.Behaviors
 
         public async Task<TResponse> HandleAsync(TRequest request, CancellationToken cancellationToken, RequestHandlerDelegate<TResponse> next)
         {
-            // Only cache queries
             if (request is not IQuery<TResponse>)
             {
                 return await next().ConfigureAwait(false);
             }
 
-            // Require a stable cache key provider; if not provided, bypass caching to avoid bad keys
             if (request is not ICacheable cacheable)
             {
                 return await next().ConfigureAwait(false);
@@ -54,5 +53,4 @@ namespace AltMediatR.Core.Behaviors
             return response;
         }
     }
-
 }

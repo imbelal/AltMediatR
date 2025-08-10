@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
-using AltMediatR.Core.Abstractions;
+using AltMediatR.DDD.Abstractions;
 
-namespace AltMediatR.Core.Infrastructure
+namespace AltMediatR.DDD.Infrastructure
 {
     /// <summary>
     /// Default scoped implementation of IIntegrationEventQueue.
@@ -12,17 +12,14 @@ namespace AltMediatR.Core.Infrastructure
 
         public void Enqueue(IIntegrationEvent @event)
         {
-            if (@event == null) return;
+            if (@event == null) throw new ArgumentNullException(nameof(@event));
             _queue.Enqueue(@event);
         }
 
         public IReadOnlyCollection<IIntegrationEvent> DequeueAll()
         {
             var list = new List<IIntegrationEvent>();
-            while (_queue.TryDequeue(out var e))
-            {
-                list.Add(e);
-            }
+            while (_queue.TryDequeue(out var evt)) list.Add(evt);
             return list;
         }
     }

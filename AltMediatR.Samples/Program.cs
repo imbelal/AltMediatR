@@ -1,5 +1,7 @@
 ﻿using AltMediatR.Core.Abstractions;
 using AltMediatR.Core.Extensions;
+using AltMediatR.DDD.Abstractions;
+using AltMediatR.DDD.Extensions;
 using AltMediatR.Samples.Commands;
 using AltMediatR.Samples.Events;
 using AltMediatR.Samples.Processors;
@@ -21,15 +23,13 @@ services.AddAltMediator(s =>
     s.AddLoggingBehavior()
     .AddValidationBehavior()
     .AddPerformanceBehavior()
-    .AddRetryBehavior()
-    .AddCachingForQueries(o => { o.DefaultTtl = TimeSpan.FromMinutes(2); o.KeyPrefix = "sample:"; })
-    .AddTransactionalOutboxBehavior();
+    .AddRetryBehavior();
 });
+services.AddAltMediatorDdd();
+services.AddTransactionalOutboxBehavior();
 services.RegisterHandlersFromAssembly(Assembly.GetExecutingAssembly());
-services.RegisterRequestPreProcessor(typeof(LoggingPreProcessor<>));
-services.RegisterRequestPostProcessor(typeof(LoggingPostProcessor<,>));
 
-// Infrastructure for demo
+// Infrastructure for DDD demo
 services.AddSingleton<IIntegrationEventPublisher, ConsoleIntegrationEventPublisher>();
 services.AddSingleton<ITransactionManager, NoOpTransactionManager>();
 services.AddSingleton<IIntegrationOutbox, InMemoryIntegrationOutbox>();
@@ -52,15 +52,15 @@ Console.WriteLine(userInfo);
 await mediator.SendAsync(new DeleteUserCommand { UserId = userId });
 Console.WriteLine("Delete completed");
 
-// Additionally publish simple sample events
+// Additionally publish simple sample events as notifications
 var sampleEvent = new SampleEvent()
 {
     Message = $"Hello from {nameof(SampleEvent)}"
 };
-await mediator.PublishDomainEventAsync(sampleEvent);
+await mediator.PublishAsync(sampleEvent);
 
 var anotherEvent = new AnotherEvent()
 {
     Message = $"Hello from {nameof(AnotherEvent)}"
 };
-await mediator.PublishIntegrationEventAsync(anotherEvent);
+await mediator.PublishAsync(anotherEvent);

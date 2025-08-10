@@ -1,10 +1,11 @@
 ﻿using AltMediatR.Core.Abstractions;
+using AltMediatR.DDD.Abstractions;
 
 namespace AltMediatR.Samples.Commands
 {
     public class CreateUserCommand : ICommand<string>
     {
-        public string Name { get; set; }
+        public required string Name { get; set; }
     }
 
     public class CreateUserHandler : IRequestHandler<CreateUserCommand, string>

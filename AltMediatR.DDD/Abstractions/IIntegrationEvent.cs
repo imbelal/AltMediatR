@@ -1,4 +1,6 @@
-namespace AltMediatR.Core.Abstractions
+using AltMediatR.Core.Abstractions;
+
+namespace AltMediatR.DDD.Abstractions
 {
     /// <summary>
     /// Marker for cross-boundary integration events. These should be published to a message broker (e.g., Service Bus)

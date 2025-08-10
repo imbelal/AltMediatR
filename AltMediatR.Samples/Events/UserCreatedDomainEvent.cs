@@ -1,4 +1,4 @@
-using AltMediatR.Core.Abstractions;
+using AltMediatR.DDD.Abstractions;
 
 namespace AltMediatR.Samples.Events
 {
@@ -8,11 +8,10 @@ namespace AltMediatR.Samples.Events
         public required string Name { get; init; }
     }
 
-    public sealed class UserCreatedDomainEventHandler : INotificationHandler<UserCreatedDomainEvent>
+    public sealed class UserCreatedDomainEventHandler : AltMediatR.Core.Abstractions.INotificationHandler<UserCreatedDomainEvent>
     {
         public async Task HandleAsync(UserCreatedDomainEvent notification, CancellationToken cancellationToken)
         {
-            // Simulate same-transaction side effect (e.g., write audit log)
             Console.WriteLine($"[DomainEvent] User created: {notification.UserId} - {notification.Name}");
             await Task.CompletedTask;
         }

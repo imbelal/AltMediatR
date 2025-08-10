@@ -1,4 +1,4 @@
-using AltMediatR.Core.Abstractions;
+using AltMediatR.DDD.Abstractions;
 
 namespace AltMediatR.Samples.Events
 {

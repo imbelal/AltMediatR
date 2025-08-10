@@ -1,6 +1,4 @@
-﻿using AltMediatR.Core.Abstractions;
-using AltMediatR.Core.Behaviors;
-using AltMediatR.Core.Deligates;
+﻿using AltMediatR.DDD.Abstractions;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -17,7 +15,7 @@ namespace AltMediatR.Tests
     public class CachingBehaviorTests
     {
         private readonly IMemoryCache _memoryCache = new MemoryCache(new MemoryCacheOptions());
-        private readonly Mock<ILogger<CachingBehavior<SampleRequest, string>>> _loggerMock = new(MockBehavior.Loose);
+        private readonly Mock<ILogger<AltMediatR.DDD.Behaviors.CachingBehavior<SampleRequest, string>>> _loggerMock = new(MockBehavior.Loose);
 
         [Fact]
         public async Task Handle_ReturnsCachedResponse_WhenExistsInCache()
@@ -27,10 +25,10 @@ namespace AltMediatR.Tests
             var expected = "Cached Response";
             _memoryCache.Set(request.CacheKey, expected);
 
-            var behavior = new CachingBehavior<SampleRequest, string>(_memoryCache, _loggerMock.Object);
+            var behavior = new AltMediatR.DDD.Behaviors.CachingBehavior<SampleRequest, string>(_memoryCache, _loggerMock.Object);
 
             bool nextWasCalled = false;
-            RequestHandlerDelegate<string> next = () =>
+            AltMediatR.Core.Deligates.RequestHandlerDelegate<string> next = () =>
             {
                 nextWasCalled = true;
                 return Task.FromResult("Should not run");
@@ -59,9 +57,9 @@ namespace AltMediatR.Tests
             var request = new SampleRequest { Name = "FreshRequest" };
             var expected = "Generated Response";
 
-            var behavior = new CachingBehavior<SampleRequest, string>(_memoryCache, _loggerMock.Object);
+            var behavior = new AltMediatR.DDD.Behaviors.CachingBehavior<SampleRequest, string>(_memoryCache, _loggerMock.Object);
 
-            RequestHandlerDelegate<string> next = () => Task.FromResult(expected);
+            AltMediatR.Core.Deligates.RequestHandlerDelegate<string> next = () => Task.FromResult(expected);
 
             // Act
             var result = await behavior.HandleAsync(request, CancellationToken.None, next);

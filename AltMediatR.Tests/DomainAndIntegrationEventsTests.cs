@@ -1,5 +1,7 @@
 using AltMediatR.Core.Abstractions;
 using AltMediatR.Core.Extensions;
+using AltMediatR.DDD.Abstractions;
+using AltMediatR.DDD.Extensions;
 using AltMediatR.Samples.Commands;
 using AltMediatR.Samples.Events;
 using AltMediatR.Samples.Infrastructure;
@@ -15,9 +17,10 @@ namespace AltMediatR.Tests
         public async Task Should_Dispatch_Domain_And_Publish_Integration_Events()
         {
             var services = new ServiceCollection();
-            services.AddAltMediator(s => s.AddTransactionalOutboxBehavior());
+            services.AddAltMediator(s => { });
+            services.AddAltMediatorDdd();
+            services.AddTransactionalOutboxBehavior();
 
-            // Probe domain handler via Moq
             var domainHandler = new Mock<INotificationHandler<UserCreatedDomainEvent>>();
             domainHandler
                 .Setup(h => h.HandleAsync(It.IsAny<UserCreatedDomainEvent>(), It.IsAny<CancellationToken>()))
@@ -25,7 +28,6 @@ namespace AltMediatR.Tests
                 .Verifiable();
             services.AddSingleton(domainHandler.Object);
 
-            // Probe integration publisher via Moq
             var publisher = new Mock<IIntegrationEventPublisher>();
             publisher
                 .Setup(p => p.PublishAsync(It.IsAny<IIntegrationEvent>(), It.IsAny<CancellationToken>()))
@@ -53,16 +55,16 @@ namespace AltMediatR.Tests
         [Fact]
         public async Task Should_Save_To_Outbox_When_Publisher_Fails()
         {
-            // Ensure outbox is empty before test
             InMemoryIntegrationOutbox.Clear();
 
             var services = new ServiceCollection();
-            services.AddAltMediator(s => s.AddTransactionalOutboxBehavior());
+            services.AddAltMediator(s => { });
+            services.AddAltMediatorDdd();
+            services.AddTransactionalOutboxBehavior();
             services.AddSingleton<IIntegrationEventPublisher, FailingPublisher>();
             services.AddSingleton<ITransactionManager, NoOpTransactionManager>();
             services.AddSingleton<IIntegrationOutbox, InMemoryIntegrationOutbox>();
 
-            // Probe domain handler to ensure domain events still dispatched
             var domainHandler = new Mock<INotificationHandler<UserCreatedDomainEvent>>();
             domainHandler
                 .Setup(h => h.HandleAsync(It.IsAny<UserCreatedDomainEvent>(), It.IsAny<CancellationToken>()))
@@ -77,7 +79,6 @@ namespace AltMediatR.Tests
             var id = await mediator.SendAsync(new CreateUserCommand { Name = "Test" });
             Assert.False(string.IsNullOrWhiteSpace(id));
 
-            // Assert event persisted to outbox
             var drained = InMemoryIntegrationOutbox.DrainAll();
             Assert.Single(drained);
             var evt = Assert.IsType<UserCreatedIntegrationEvent>(drained[0]);

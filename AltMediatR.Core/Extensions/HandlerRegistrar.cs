@@ -1,7 +1,5 @@
-﻿using AltMediatR.Core.Abstractions;
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using System.Reflection;
-using System;
 using System.Linq;
 
 namespace AltMediatR.Core.Extensions
@@ -12,46 +10,44 @@ namespace AltMediatR.Core.Extensions
     public static class HandlerRegistrar
     {
         /// <summary>
-        /// Registers all IRequestHandler, IRequestHandler (void), and INotificationHandler implementations from the specified assembly as transient services.
+        /// Registers all IRequestHandler, IRequestHandler (void), INotificationHandler, IRequestPreProcessor and IRequestPostProcessor
+        /// implementations from the specified assembly as transient services.
+        /// Supports both closed and open-generic implementations.
         /// </summary>
         /// <param name="services"></param>
         /// <param name="assembly"></param>
-        public static void RegisterHandlersFromAssembly(this IServiceCollection services, Assembly assembly)
+        public static IServiceCollection RegisterHandlersFromAssembly(this IServiceCollection services, Assembly assembly)
         {
-            var types = assembly.GetTypes()
+            var registrations = assembly.GetTypes()
                 .Where(t => !t.IsAbstract && !t.IsInterface)
-                .SelectMany(t => t.GetInterfaces(), (t, i) => new { Type = t, Interface = i })
-                .Where(x => x.Interface.IsGenericType && (
-                            x.Interface.GetGenericTypeDefinition() == typeof(IRequestHandler<,>) ||
-                            x.Interface.GetGenericTypeDefinition() == typeof(IRequestHandler<>) ||
-                            x.Interface.GetGenericTypeDefinition() == typeof(INotificationHandler<>)))
+                .SelectMany(t => t.GetInterfaces()
+                    .Where(i => i.IsGenericType && (
+                        i.GetGenericTypeDefinition() == typeof(Abstractions.IRequestHandler<,>) ||
+                        i.GetGenericTypeDefinition() == typeof(Abstractions.IRequestHandler<>) ||
+                        i.GetGenericTypeDefinition() == typeof(Abstractions.INotificationHandler<>) ||
+                        i.GetGenericTypeDefinition() == typeof(Abstractions.IRequestPreProcessor<>) ||
+                        i.GetGenericTypeDefinition() == typeof(Abstractions.IRequestPostProcessor<,>)
+                    ))
+                    .Select(i => new { Interface = i, Implementation = t }))
                 .ToList();
 
-            foreach (var pair in types)
+            foreach (var reg in registrations)
             {
-                services.AddTransient(pair.Interface, pair.Type);
+                var iface = reg.Interface;
+                var impl = reg.Implementation;
+
+                // If implementation is open generic, register open-generic service mapping
+                if (impl.IsGenericTypeDefinition && iface.IsGenericType)
+                {
+                    services.AddTransient(iface.GetGenericTypeDefinition(), impl);
+                }
+                else
+                {
+                    services.AddTransient(iface, impl);
+                }
             }
-        }
 
-        /// <summary>
-        /// Register a custom request pre-processor.
-        /// </summary>
-        /// <param name="services"></param>
-        /// <param name="type"></param>
-        public static void RegisterRequestPreProcessor(this IServiceCollection services, Type type)
-        {
-            services.AddTransient(typeof(IRequestPreProcessor<>), type);
+            return services;
         }
-
-        /// <summary>
-        /// Register a custom request post-processor.
-        /// </summary>
-        /// <param name="services"></param>
-        /// <param name="type"></param>
-        public static void RegisterRequestPostProcessor(this IServiceCollection services, Type type)
-        {
-            services.AddTransient(typeof(IRequestPostProcessor<,>), type);
-        }
-
     }
 }
