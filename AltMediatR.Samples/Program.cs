@@ -9,6 +9,7 @@ using AltMediatR.Samples.Queries;
 using Microsoft.Extensions.DependencyInjection;
 using System.Reflection;
 using AltMediatR.Samples.Infrastructure;
+using AltMediatR.DDD.Infrastructure;
 
 
 var services = new ServiceCollection();
@@ -32,7 +33,8 @@ services.RegisterHandlersFromAssembly(Assembly.GetExecutingAssembly());
 // Infrastructure for DDD demo
 services.AddSingleton<IIntegrationEventPublisher, ConsoleIntegrationEventPublisher>();
 services.AddSingleton<ITransactionManager, NoOpTransactionManager>();
-services.AddSingleton<IIntegrationOutbox, InMemoryIntegrationOutbox>();
+services.AddInMemoryOutboxStore();
+services.AddScoped<IEventQueueCollector, InMemoryEventQueueCollector>();
 
 // Validate AltMediator configuration (fail fast if duplicates or behavior issues)
 services.ValidateAltMediatorConfiguration(validateBehaviors: true);

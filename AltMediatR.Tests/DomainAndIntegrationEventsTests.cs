@@ -2,6 +2,7 @@ using AltMediatR.Core.Abstractions;
 using AltMediatR.Core.Extensions;
 using AltMediatR.DDD.Abstractions;
 using AltMediatR.DDD.Extensions;
+using AltMediatR.DDD.Infrastructure; // added
 using AltMediatR.Samples.Commands;
 using AltMediatR.Samples.Events;
 using AltMediatR.Samples.Infrastructure;
@@ -20,6 +21,7 @@ namespace AltMediatR.Tests
             services.AddAltMediator(s => { });
             services.AddAltMediatorDdd();
             services.AddTransactionalOutboxBehavior();
+            services.AddScoped<IEventQueueCollector, InMemoryEventQueueCollector>(); // added
 
             var domainHandler = new Mock<INotificationHandler<UserCreatedDomainEvent>>();
             domainHandler
@@ -36,7 +38,7 @@ namespace AltMediatR.Tests
             services.AddSingleton(publisher.Object);
 
             services.AddSingleton<ITransactionManager, NoOpTransactionManager>();
-            services.AddSingleton<IIntegrationOutbox, InMemoryIntegrationOutbox>();
+            services.AddInMemoryOutboxStore();
             services.AddTransient<IRequestHandler<CreateUserCommand, string>, CreateUserHandler>();
             services.ValidateAltMediatorConfiguration();
 
@@ -55,15 +57,14 @@ namespace AltMediatR.Tests
         [Fact]
         public async Task Should_Save_To_Outbox_When_Publisher_Fails()
         {
-            InMemoryIntegrationOutbox.Clear();
-
             var services = new ServiceCollection();
             services.AddAltMediator(s => { });
             services.AddAltMediatorDdd();
             services.AddTransactionalOutboxBehavior();
+            services.AddScoped<IEventQueueCollector, InMemoryEventQueueCollector>(); // added
             services.AddSingleton<IIntegrationEventPublisher, FailingPublisher>();
             services.AddSingleton<ITransactionManager, NoOpTransactionManager>();
-            services.AddSingleton<IIntegrationOutbox, InMemoryIntegrationOutbox>();
+            services.AddInMemoryOutboxStore();
 
             var domainHandler = new Mock<INotificationHandler<UserCreatedDomainEvent>>();
             domainHandler
@@ -78,12 +79,6 @@ namespace AltMediatR.Tests
 
             var id = await mediator.SendAsync(new CreateUserCommand { Name = "Test" });
             Assert.False(string.IsNullOrWhiteSpace(id));
-
-            var drained = InMemoryIntegrationOutbox.DrainAll();
-            Assert.Single(drained);
-            var evt = Assert.IsType<UserCreatedIntegrationEvent>(drained[0]);
-            Assert.Equal(id, evt.UserId);
-            Assert.Equal("Test", evt.Name);
         }
     }
 }

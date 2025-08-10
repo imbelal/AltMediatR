@@ -4,35 +4,42 @@ using AltMediatR.DDD.Abstractions;
 
 namespace AltMediatR.DDD.Behaviors
 {
+    public enum DispatchOrder { DomainFirst, IntegrationFirst }
+
+    public sealed class DddMediatorOptions
+    {
+        public DispatchOrder DispatchOrder { get; set; } = DispatchOrder.DomainFirst;
+        public bool ParallelDispatch { get; set; } = false;
+    }
+
     /// <summary>
-    /// Wraps request handling in a DB transaction; dispatches domain events before commit;
-    /// attempts to publish integration events; on publish failure, stores them in outbox and still commits the transaction.
-    /// Rolls back on unhandled failure.
+    /// Wraps request handling in a DB transaction; configurable dispatch of domain and integration events collected from aggregates.
+    /// On publish failure, stores integration events in outbox store and still commits the transaction.
     /// </summary>
     public sealed class TransactionalEventDispatcherBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
         where TRequest : IRequest<TResponse>
     {
         private readonly ITransactionManager _txManager;
         private readonly IMediator _mediator;
-        private readonly IDomainEventQueue _domainQueue;
-        private readonly IIntegrationEventQueue _integrationQueue;
         private readonly IIntegrationEventPublisher? _integrationPublisher;
-        private readonly IIntegrationOutbox? _outbox;
+        private readonly IOutboxStore? _outboxStore;  // pluggable outbox store
+        private readonly IEventQueueCollector _collector; // required (AggregateRootBase flows)
+        private readonly DddMediatorOptions _options;
 
         public TransactionalEventDispatcherBehavior(
             ITransactionManager txManager,
             IMediator mediator,
-            IDomainEventQueue domainQueue,
-            IIntegrationEventQueue integrationQueue,
+            IEventQueueCollector collector,
             IIntegrationEventPublisher? integrationPublisher = null,
-            IIntegrationOutbox? outbox = null)
+            IOutboxStore? outboxStore = null,
+            DddMediatorOptions? options = null)
         {
             _txManager = txManager;
             _mediator = mediator;
-            _domainQueue = domainQueue;
-            _integrationQueue = integrationQueue;
+            _collector = collector ?? throw new ArgumentNullException(nameof(collector));
             _integrationPublisher = integrationPublisher;
-            _outbox = outbox;
+            _outboxStore = outboxStore;
+            _options = options ?? new DddMediatorOptions();
         }
 
         public async Task<TResponse> HandleAsync(TRequest request, CancellationToken cancellationToken, RequestHandlerDelegate<TResponse> next)
@@ -40,51 +47,85 @@ namespace AltMediatR.DDD.Behaviors
             await using var scope = await _txManager.BeginAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                // Execute handler within transaction
                 var response = await next().ConfigureAwait(false);
 
-                // 1) Dispatch domain events in-process (participates in same transaction)
-                foreach (var domainEvent in _domainQueue.DequeueAll())
-                {
-                    await _mediator.PublishAsync(domainEvent, cancellationToken).ConfigureAwait(false);
-                }
+                var domainEvents = _collector.CollectDomainEvents().ToArray();
+                var integrationEvents = _collector.CollectIntegrationEvents().ToArray();
 
-                // 2) Try publishing integration events; on failure, save to outbox
-                var integrationEvents = _integrationQueue.DequeueAll();
-                if (_integrationPublisher != null && integrationEvents.Count > 0)
+                if (_options.ParallelDispatch)
                 {
-                    foreach (var evt in integrationEvents)
-                    {
-                        try
-                        {
-                            await _integrationPublisher.PublishAsync(evt, cancellationToken).ConfigureAwait(false);
-                        }
-                        catch
-                        {
-                            if (_outbox == null) throw; // no outbox configured, bubble up
-                            await _outbox.SaveAsync(evt, cancellationToken).ConfigureAwait(false);
-                        }
-                    }
+                    var tasks = _options.DispatchOrder == DispatchOrder.DomainFirst
+                        ? new[] { DispatchDomainAsync(domainEvents, cancellationToken), DispatchIntegrationAsync(integrationEvents, cancellationToken) }
+                        : new[] { DispatchIntegrationAsync(integrationEvents, cancellationToken), DispatchDomainAsync(domainEvents, cancellationToken) };
+                    await Task.WhenAll(tasks).ConfigureAwait(false);
                 }
-                else if (_outbox != null)
+                else
                 {
-                    foreach (var evt in integrationEvents)
+                    if (_options.DispatchOrder == DispatchOrder.DomainFirst)
                     {
-                        await _outbox.SaveAsync(evt, cancellationToken).ConfigureAwait(false);
+                        await DispatchDomainAsync(domainEvents, cancellationToken).ConfigureAwait(false);
+                        await DispatchIntegrationAsync(integrationEvents, cancellationToken).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        await DispatchIntegrationAsync(integrationEvents, cancellationToken).ConfigureAwait(false);
+                        await DispatchDomainAsync(domainEvents, cancellationToken).ConfigureAwait(false);
                     }
                 }
 
-                // 3) Commit transaction
+                _collector.ClearEvents();
                 await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
                 return response;
             }
             catch
             {
-                // Roll back on failure and clear queues to avoid leaks
                 try { await scope.RollbackAsync(cancellationToken).ConfigureAwait(false); } catch { }
-                _ = _domainQueue.DequeueAll();
-                _ = _integrationQueue.DequeueAll();
+                _collector.ClearEvents();
                 throw;
+            }
+        }
+
+        private async Task DispatchDomainAsync(IEnumerable<IDomainEvent> events, CancellationToken ct)
+        {
+            foreach (var domainEvent in events)
+                await _mediator.PublishAsync(domainEvent, ct).ConfigureAwait(false);
+        }
+
+        private async Task DispatchIntegrationAsync(IEnumerable<IIntegrationEvent> events, CancellationToken ct)
+        {
+            var list = events as ICollection<IIntegrationEvent> ?? events.ToList();
+            if (list.Count == 0) return;
+
+            if (_integrationPublisher == null && _outboxStore == null)
+                throw new InvalidOperationException("No integration publisher or outbox store configured.");
+
+            foreach (var evt in list)
+            {
+                var published = false;
+                if (_integrationPublisher != null)
+                {
+                    try
+                    {
+                        await _integrationPublisher.PublishAsync(evt, ct).ConfigureAwait(false);
+                        published = true;
+                    }
+                    catch
+                    {
+                        // fall through to outbox store
+                    }
+                }
+
+                if (!published)
+                {
+                    if (_outboxStore != null)
+                    {
+                        await _outboxStore.SaveAsync(evt, ct).ConfigureAwait(false);
+                        published = true;
+                    }
+                }
+
+                if (!published)
+                    throw new InvalidOperationException("Failed to publish integration event and no outbox store available.");
             }
         }
     }

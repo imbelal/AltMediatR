@@ -9,9 +9,15 @@ namespace AltMediatR.DDD.Extensions
     {
         public static IServiceCollection AddAltMediatorDdd(this IServiceCollection services)
         {
-            services.AddScoped<IDomainEventQueue, Infrastructure.DomainEventQueue>();
-            services.AddScoped<IIntegrationEventQueue, Infrastructure.IntegrationEventQueue>();
+            services.AddSingleton(new DddMediatorOptions());
             return services;
+        }
+
+        public static IServiceCollection ConfigureDddMediator(this IServiceCollection services, Action<DddMediatorOptions> configure)
+        {
+            var opts = new DddMediatorOptions();
+            configure?.Invoke(opts);
+            return services.AddSingleton(opts);
         }
 
         public static IServiceCollection AddTransactionalOutboxBehavior(this IServiceCollection services)
@@ -24,5 +30,17 @@ namespace AltMediatR.DDD.Extensions
             services.AddSingleton(options);
             return services.AddTransient(typeof(AltMediatR.Core.Abstractions.IPipelineBehavior<,>), typeof(CachingBehavior<,>));
         }
+
+        public static IServiceCollection AddInMemoryOutboxStore(this IServiceCollection services)
+            => services.AddSingleton<IOutboxStore, Infrastructure.InMemoryOutboxStore>();
+
+        // Basic in-memory publisher for local dev/testing
+        private sealed class InMemoryPublisher : IIntegrationEventPublisher
+        {
+            public Task PublishAsync(IIntegrationEvent @event, CancellationToken cancellationToken = default)
+                => Task.CompletedTask;
+        }
+        public static IServiceCollection AddInMemoryIntegrationEventPublisher(this IServiceCollection services)
+            => services.AddSingleton<IIntegrationEventPublisher, InMemoryPublisher>();
     }
 }

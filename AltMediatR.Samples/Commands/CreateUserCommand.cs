@@ -1,5 +1,7 @@
 ﻿using AltMediatR.Core.Abstractions;
 using AltMediatR.DDD.Abstractions;
+using AltMediatR.DDD.Domain;
+using AltMediatR.DDD.Infrastructure;
 
 namespace AltMediatR.Samples.Commands
 {
@@ -8,37 +10,40 @@ namespace AltMediatR.Samples.Commands
         public required string Name { get; set; }
     }
 
+    internal sealed class UserAggregate : AggregateRootBase
+    {
+        public string? Id { get; private set; }
+        public string? Name { get; private set; }
+
+        public void Create(string name)
+        {
+            Id = Guid.NewGuid().ToString();
+            Name = name;
+            Console.WriteLine($"User '{Name}' created with ID: {Id}");
+
+            RaiseDomainEvent(new AltMediatR.Samples.Events.UserCreatedDomainEvent { UserId = Id!, Name = Name! });
+            RaiseIntegrationEvent(new AltMediatR.Samples.Events.UserCreatedIntegrationEvent { UserId = Id!, Name = Name! });
+        }
+    }
+
     public class CreateUserHandler : IRequestHandler<CreateUserCommand, string>
     {
-        private readonly IDomainEventQueue _domainEvents;
-        private readonly IIntegrationEventQueue _integrationEvents;
+        private readonly IEventQueueCollector _collector;
 
-        public CreateUserHandler(IDomainEventQueue domainEvents, IIntegrationEventQueue integrationEvents)
+        public CreateUserHandler(IEventQueueCollector collector)
         {
-            _domainEvents = domainEvents;
-            _integrationEvents = integrationEvents;
+            _collector = collector;
         }
 
         public Task<string> HandleAsync(CreateUserCommand request, CancellationToken cancellationToken)
         {
-            var userId = Guid.NewGuid().ToString();
-            Console.WriteLine($"User '{request.Name}' created with ID: {userId}");
+            var aggregate = new UserAggregate();
+            aggregate.Create(request.Name);
 
-            // Queue domain event (in-process)
-            _domainEvents.Enqueue(new AltMediatR.Samples.Events.UserCreatedDomainEvent
-            {
-                UserId = userId,
-                Name = request.Name
-            });
+            if (_collector is InMemoryEventQueueCollector mem)
+                mem.Register(aggregate);
 
-            // Queue integration event (out-of-process)
-            _integrationEvents.Enqueue(new AltMediatR.Samples.Events.UserCreatedIntegrationEvent
-            {
-                UserId = userId,
-                Name = request.Name
-            });
-
-            return Task.FromResult(userId);
+            return Task.FromResult(aggregate.Id!);
         }
     }
 }

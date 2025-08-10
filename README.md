@@ -1,6 +1,7 @@
 # AltMediatR
 
 AltMediatR is a lightweight, dependency-injection friendly mediator for .NET. The repository contains:
+
 - AltMediatR.Core: request/notification mediator, pre/post processors, and core pipeline behaviors (logging, validation, performance, retry).
 - AltMediatR.DDD: optional extensions that add CQRS markers (ICommand/IQuery), query caching, and domain/integration events with a transactional outbox.
 
@@ -34,12 +35,14 @@ AltMediatR promotes decoupled communication via the Mediator pattern.
   - CQRS markers: `ICommand<TResponse>`, `IQuery<TResponse>`.
   - Query caching via `IMemoryCache` with `ICacheable` and `CachingOptions`.
   - Domain events (`IDomainEvent`) and integration events (`IIntegrationEvent`) with a transactional outbox behavior.
+  - Aggregates raise events via `AggregateRootBase`; events are collected with `IEventQueueCollector` (EF Core or in-memory).
 
 ## Features
 
 - Core mediator with true-void support (no Unit exposed in public API).
 - Opt‑in pipeline behaviors: Logging, Validation, Performance, Retry (Core).
 - Optional DDD features: Commands/Queries markers, Caching (query‑only), Domain/Integration events with outbox (DDD).
+- Aggregate-driven events via `AggregateRootBase` + `IEventQueueCollector` (no request-scoped queues).
 - Request pre/post processors.
 - Startup validation for duplicate handlers and behavior config.
 
@@ -74,7 +77,12 @@ services.AddAltMediatorDdd();
 services.AddCachingForQueries(o => { o.KeyPrefix = "app:"; });
 services.AddTransactionalOutboxBehavior();
 
-// Register handlers by assembly scan (auto-registers handlers + pre/post processors)
+// Register an event collector (choose one):
+// services.AddScoped<IEventQueueCollector, EfCoreEventQueueCollector<MyDbContext>>();
+// or
+// services.AddScoped<IEventQueueCollector, InMemoryEventQueueCollector>();
+
+// Register handlers by assembly scan
 services.RegisterHandlersFromAssembly(Assembly.GetExecutingAssembly());
 
 // Optional: behavior ordering
@@ -191,7 +199,7 @@ await mediator.PublishAsync(new UserCreatedNotification { UserId = id });
 - DDD domain/integration events:
   - Domain events implement `AltMediatR.DDD.Abstractions.IDomainEvent` (also handled via `INotificationHandler<T>`).
   - Integration events implement `AltMediatR.DDD.Abstractions.IIntegrationEvent`.
-  - Register `services.AddTransactionalOutboxBehavior()` and enqueue domain/integration events inside your handlers via the scoped queues (`IDomainEventQueue`, `IIntegrationEventQueue`). The transactional behavior will publish domain events (via mediator.PublishAsync) and publish or outbox integration events.
+  - Register `services.AddTransactionalOutboxBehavior()` and enqueue domain/integration events inside your handlers. The transactional behavior will publish domain events (via mediator.PublishAsync) and publish or outbox integration events.
 
 See the Samples project for concrete usage.
 
