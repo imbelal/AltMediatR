@@ -1,172 +1,237 @@
 # AltMediatR
 
-**AltMediatR** is a lightweight alternative to the MediatR library for implementing the Mediator pattern in .NET applications. It provides a simple, in-memory mediator for handling commands, queries, and notifications with support for dependency injection and pipeline behaviors.
+AltMediatR is a lightweight, dependency-injection friendly mediator for .NET. It supports commands, queries, notifications, pre/post processors, and opt‑in pipeline behaviors (logging, validation, performance, retry, caching). It also includes first‑class support for domain and integration events with a transactional outbox pattern.
 
 ## Table of Contents
-- [Overview](#overview)
-- [Installation](#installation)
-- [Key Components](#key-components)
-- [Usage](#usage)
-  - [Handling Commands](#handling-commands)
-  - [Handling Queries](#handling-queries)
-  - [Publishing Notifications](#publishing-notifications)
-  - [Using Pipeline Behaviors](#using-pipeline-behaviors)
-- [Dependency Injection](#dependency-injection)
-- [Contributing](#contributing)
-- [License](#license)
+
+- Overview
+- Features
+- Installation
+- Quick start
+- Requests and handlers
+  - Commands (with/without response)
+  - Queries (with caching)
+  - Notifications
+- Pipeline behaviors
+  - Registering behaviors
+  - Behavior ordering
+  - Built-in behaviors
+- Pre/Post processors
+- Domain and integration events
+  - Transactional outbox
+- Startup validation
+- Samples
 
 ## Overview
-AltMediatR enables decoupled communication between components in a .NET application using the Mediator pattern. Key features include:
-- **Commands**: For state-changing operations (e.g., creating or updating data).
-- **Queries**: For retrieving data.
-- **Notifications**: For broadcasting events to multiple handlers.
-- **Pipeline Behaviors**: For cross-cutting concerns like logging or validation.
-- **Dependency Injection**: Seamless integration with `Microsoft.Extensions.DependencyInjection`.
 
-The library is designed to be lightweight, flexible, and easy to integrate into existing .NET projects.
+AltMediatR promotes decoupled communication via the Mediator pattern.
+
+- Requests: `IRequest<TResponse>` and `IRequest` (true void).
+- Handlers: `IRequestHandler<TRequest,TResponse>`, `IRequestHandler<TRequest>`, `INotificationHandler<TNotification>`.
+- DI: Built on `Microsoft.Extensions.DependencyInjection`.
+- Pipelines: Add only the behaviors you need, in the order you choose.
+- Events: In‑process domain events and out‑of‑process integration events with outbox fallback.
+
+## Features
+
+- Commands/Queries via markers: `ICommand<T>`, `ICommand`, `IQuery<T>`.
+- True void pipeline (no Unit exposed) for `IRequest` + `IRequestHandler<TRequest>`.
+- Opt‑in pipeline behaviors: Logging, Validation, Performance, Retry, Caching (query‑only).
+- Request pre/post processors.
+- Query caching using `IMemoryCache` with `ICacheable` and `CachingOptions`.
+- Domain events (`IDomainEvent`) and integration events (`IIntegrationEvent`).
+- Transactional outbox via `ITransactionManager` + `IIntegrationOutbox`.
+- Startup validation for duplicate handlers and behavior config.
 
 ## Installation
-To use AltMediatR in your project:
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/imbelal/AltMediatR.git
-   ```
-2. Add the project to your solution or include the source files in your .NET project.
-3. Ensure you have the required dependency: `Microsoft.Extensions.DependencyInjection`.
 
+- Requires .NET 8.
+- Add the AltMediatR projects to your solution or reference the library.
 
-## Key Components
-- **`IRequest<TResponse>`**: Interface for requests (commands or queries) that return a response of type `TResponse`.
-- **`IRequestHandler<TRequest, TResponse>`**: Interface for handling specific requests.
-- **`IMediator`**: Core interface for sending requests and publishing notifications.
-  - `Send`: Sends a command or query and returns a response.
-  - `Publish`: Broadcasts a notification to all registered handlers.
-- **`INotification` and `INotificationHandler<TNotification>`**: Interfaces for defining and handling notifications.
-- **`IPipelineBehavior<TRequest, TResponse>`**: Interface for pipeline behaviors to handle cross-cutting concerns.
+## Quick start
 
-## Usage
-
-### Handling Commands
-Define a command and its handler:
 ```csharp
-public class CreateUserCommand : ICommand<int>
-{
-    public string Name { get; set; }
-}
+using AltMediatR.Core.Extensions;
+using Microsoft.Extensions.DependencyInjection;
+using System.Reflection;
 
-public class CreateUserCommandHandler : ICommandHandler<CreateUserCommand, int>
+var services = new ServiceCollection();
+services.AddLogging();
+services.AddMemoryCache();
+
+services.AddAltMediator(s =>
 {
-    public Task<int> Handle(CreateUserCommand request, CancellationToken cancellationToken)
+    s.AddLoggingBehavior()
+     .AddValidationBehavior()
+     .AddPerformanceBehavior()
+     .AddRetryBehavior()
+     .AddCachingForQueries(o => { o.KeyPrefix = "app:"; });
+     // For events + outbox
+     s.AddTransactionalOutboxBehavior();
+});
+
+// Optional: behavior ordering
+services.AddSingleton(new AltMediatR.Core.Configurations.PipelineConfig
+{
+    BehaviorsInOrder =
     {
-        // Logic to create a user
-        return Task.FromResult(42); // Example: return user ID
+        typeof(AltMediatR.Core.Behaviors.LoggingBehavior<,>),
+        typeof(AltMediatR.Core.Behaviors.ValidationBehavior<,>),
+        typeof(AltMediatR.Core.Behaviors.PerformanceBehavior<,>),
+        typeof(AltMediatR.Core.Behaviors.RetryBehavior<,>),
+        typeof(AltMediatR.Core.Behaviors.CachingBehavior<,>)
     }
-}
+});
+
+// Register handlers by assembly scan
+services.RegisterHandlersFromAssembly(Assembly.GetExecutingAssembly());
+
+// Optional pre/post processors
+services.RegisterRequestPreProcessor(typeof(MyPreProcessor<>));
+services.RegisterRequestPostProcessor(typeof(MyPostProcessor<,>));
+
+// Event infrastructure (implementations shown in Samples)
+services.AddSingleton<ITransactionManager, MyTransactionManager>();
+services.AddSingleton<IIntegrationEventPublisher, MyIntegrationEventPublisher>();
+services.AddSingleton<IIntegrationOutbox, MyIntegrationOutbox>();
+
+// Validate configuration (fail fast)
+services.ValidateAltMediatorConfiguration(validateBehaviors: true);
+
+var provider = services.BuildServiceProvider();
+var mediator = provider.GetRequiredService<IMediator>();
 ```
 
-Send the command:
-```csharp
-var mediator = serviceProvider.GetService<IMediator>();
-var command = new CreateUserCommand { Name = "John Doe" };
-int userId = await mediator.Send(command);
-Console.WriteLine($"User created with ID: {userId}");
-```
+## Requests and handlers
 
-### Handling Queries
-Define a query and its handler:
+### Commands (with response)
+
 ```csharp
-public class GetUserQuery : IQuery<User>
+public sealed class CreateUserCommand : ICommand<string>
 {
-    public int Id { get; set; }
+    public required string Name { get; init; }
 }
 
-public class GetUserQueryHandler : IQueryHandler<GetUserQuery, User>
+public sealed class CreateUserHandler : IRequestHandler<CreateUserCommand, string>
 {
-    public Task<User> Handle(GetUserQuery request, CancellationToken cancellationToken)
-    {
-        // Logic to retrieve a user
-        return Task.FromResult(new User { Id = request.Id, Name = "John Doe" });
-    }
+    public Task<string> HandleAsync(CreateUserCommand request, CancellationToken ct)
+        => Task.FromResult(Guid.NewGuid().ToString());
 }
+
+var id = await mediator.SendAsync(new CreateUserCommand { Name = "Jane" });
 ```
 
-Send the query:
-```csharp
-var mediator = serviceProvider.GetService<IMediator>();
-var query = new GetUserQuery { Id = 42 };
-var user = await mediator.Send(query);
-Console.WriteLine($"User: {user.Name}");
-```
+### Commands (void)
 
-### Publishing Notifications
-Define a notification and its handler:
 ```csharp
-public class UserCreatedNotification : INotification
+public sealed class DeleteUserCommand : ICommand
 {
-    public int UserId { get; set; }
+    public required string UserId { get; init; }
 }
 
-public class UserCreatedNotificationHandler : INotificationHandler<UserCreatedNotification>
+public sealed class DeleteUserHandler : IRequestHandler<DeleteUserCommand>
 {
-    public Task Handle(UserCreatedNotification notification, CancellationToken cancellationToken)
-    {
-        Console.WriteLine($"Notification: User {notification.UserId} created.");
-        return Task.CompletedTask;
-    }
+    public Task HandleAsync(DeleteUserCommand request, CancellationToken ct)
+        => Task.CompletedTask;
 }
+
+await mediator.SendAsync(new DeleteUserCommand { UserId = id });
 ```
 
-Publish the notification:
-```csharp
-var mediator = serviceProvider.GetService<IMediator>();
-var notification = new UserCreatedNotification { UserId = 42 };
-await mediator.Publish(notification);
-```
+### Queries (with caching)
 
-### Using Pipeline Behaviors
-Define a pipeline behavior (e.g., for logging):
 ```csharp
-public class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
-    where TRequest : IRequest<TResponse>
+public sealed class GetUserQuery : IQuery<string>, ICacheable
 {
-    public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken cancellationToken)
-    {
-        Console.WriteLine($"Handling {typeof(TRequest).Name}");
-        var response = await next();
-        Console.WriteLine($"Handled {typeof(TRequest).Name}");
-        return response;
-    }
+    public required string UserId { get; init; }
+    public string CacheKey => $"user:{UserId}";
+    public TimeSpan? AbsoluteExpirationRelativeToNow => TimeSpan.FromMinutes(5);
 }
-```
 
-Register the behavior:
-```csharp
-services.AddTransient(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
-```
-
-The behavior will wrap request handling automatically.
-
-## Dependency Injection
-AltMediatR integrates with `Microsoft.Extensions.DependencyInjection`. Register services in your `Startup.cs` or equivalent:
-```csharp
-public void ConfigureServices(IServiceCollection services)
+public sealed class GetUserHandler : IRequestHandler<GetUserQuery, string>
 {
-    services.AddMediatR(typeof(Program).Assembly); // Registers handlers and mediator
-    services.AddTransient(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>)); // Optional: Add behaviors
+    public Task<string> HandleAsync(GetUserQuery request, CancellationToken ct)
+        => Task.FromResult($"User: {request.UserId}");
 }
+
+var user = await mediator.SendAsync(new GetUserQuery { UserId = id });
 ```
 
-The `AddMediatR` extension method scans the assembly for handlers and registers them.
+### Notifications
 
-## Contributing
-Contributions are welcome! To contribute:
-1. Fork the repository.
-2. Create a feature branch (`git checkout -b feature/your-feature`).
-3. Commit your changes (`git commit -m "Add your feature"`).
-4. Push to the branch (`git push origin feature/your-feature`).
-5. Open a pull request.
+```csharp
+public sealed class UserCreatedDomainEvent : IDomainEvent
+{
+    public required string UserId { get; init; }
+}
 
-Please ensure your code adheres to the project's coding standards and includes tests where applicable.
+public sealed class UserCreatedHandler : INotificationHandler<UserCreatedDomainEvent>
+{
+    public Task HandleAsync(UserCreatedDomainEvent e, CancellationToken ct)
+        => Task.CompletedTask;
+}
 
-## License
-This project is licensed under the MIT License. See the LICENSE file for details.
+await mediator.PublishDomainEventAsync(new UserCreatedDomainEvent { UserId = id });
+```
+
+## Pipeline behaviors
+
+### Registering behaviors
+
+Use the helpers in `MediatorExtensions`:
+
+- `AddLoggingBehavior()`
+- `AddValidationBehavior()`
+- `AddPerformanceBehavior()`
+- `AddRetryBehavior()`
+- `AddCachingForQueries([options])`
+- `AddTransactionalOutboxBehavior()` (dispatches domain events; publishes integration events with outbox fallback)
+
+### Behavior ordering
+
+Provide a `PipelineConfig` singleton with `BehaviorsInOrder` listing open generic behavior types in desired order. Behaviors not listed run afterward.
+
+### Built-in behaviors
+
+- LoggingBehavior: logs before/after handler.
+- ValidationBehavior: uses `IValidator<TRequest>` (default `NoOpValidator` registered).
+- PerformanceBehavior: times handler execution.
+- RetryBehavior: simple retry with logging on exceptions.
+- CachingBehavior: caches only `IQuery<T>` requests implementing `ICacheable`.
+- Transactional outbox behavior: wraps handler in a transaction, dispatches domain events, and publishes integration events; on publish failure, stores events in `IIntegrationOutbox`.
+
+## Pre/Post processors
+
+- Pre: `IRequestPreProcessor<TRequest>` runs before the handler.
+- Post: `IRequestPostProcessor<TRequest,TResponse>` runs after the handler.
+  Register with `RegisterRequestPreProcessor` and `RegisterRequestPostProcessor`.
+
+## Domain and integration events
+
+- Domain events: implement `IDomainEvent` and handle via `INotificationHandler<TDomainEvent>`.
+- Integration events: implement `IIntegrationEvent` and publish via `IIntegrationEventPublisher`.
+- Use `AddTransactionalOutboxBehavior()` to ensure:
+  - Domain events dispatch within the same transaction.
+  - Integration events are published; if publishing fails, they are stored in `IIntegrationOutbox` for later delivery.
+
+Infrastructure abstractions:
+
+- `ITransactionManager` provides `BeginAsync()` creating a transactional scope.
+- `IIntegrationEventPublisher` sends integration events to your transport (e.g., bus).
+- `IIntegrationOutbox` persists events if publish fails (sample in-memory outbox included).
+
+## Startup validation
+
+Call `services.ValidateAltMediatorConfiguration(validateBehaviors: true)` after registrations to fail fast on:
+
+- Multiple handlers for the same request type (generic and void).
+- Duplicate behavior registrations.
+- Missing behaviors listed in `PipelineConfig.BehaviorsInOrder`.
+
+## Samples
+
+See the `AltMediatR.Samples` project for:
+
+- DI setup, handler registration, and behavior configuration.
+- Example command/query/void handlers and pre/post processors.
+- Domain/integration events with a console publisher and in-memory outbox.
