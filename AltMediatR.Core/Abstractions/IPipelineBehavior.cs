@@ -1,4 +1,4 @@
-﻿using AltMediatR.Core.Deligates;
+﻿using AltMediatR.Core.Delegates;
 
 namespace AltMediatR.Core.Abstractions
 {

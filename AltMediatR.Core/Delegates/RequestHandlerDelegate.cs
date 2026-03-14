@@ -1,4 +1,5 @@
-﻿namespace AltMediatR.Core.Deligates
+namespace AltMediatR.Core.Delegates
 {
     public delegate Task<TResponse> RequestHandlerDelegate<TResponse>();
 }
+

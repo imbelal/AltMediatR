@@ -82,8 +82,22 @@ namespace AltMediatR.Core.Extensions
         public static IServiceCollection AddPerformanceBehavior(this IServiceCollection services)
             => services.AddPipelineBehavior(typeof(PerformanceBehavior<,>));
 
+        /// <summary>
+        /// Registers the retry pipeline behavior with default options (3 attempts, 200 ms base delay).
+        /// </summary>
         public static IServiceCollection AddRetryBehavior(this IServiceCollection services)
             => services.AddPipelineBehavior(typeof(RetryBehavior<,>));
+
+        /// <summary>
+        /// Registers the retry pipeline behavior with the specified options.
+        /// </summary>
+        public static IServiceCollection AddRetryBehavior(this IServiceCollection services, Action<RetryOptions> configure)
+        {
+            var options = new RetryOptions();
+            configure?.Invoke(options);
+            services.AddSingleton(options);
+            return services.AddPipelineBehavior(typeof(RetryBehavior<,>));
+        }
     }
 
 }

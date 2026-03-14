@@ -32,7 +32,7 @@ public class Program
             .AddHandlersFromAssembly(Assembly.GetExecutingAssembly())
 
             // DDD integration
-            .AddDddIntegrationDdd()
+            .AddAltMediatorDdd()
             .AddDddHandlersFromAssembly(Assembly.GetExecutingAssembly())
 
             // Query caching

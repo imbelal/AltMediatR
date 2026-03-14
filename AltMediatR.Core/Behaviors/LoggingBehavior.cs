@@ -1,10 +1,10 @@
 ﻿using AltMediatR.Core.Abstractions;
-using AltMediatR.Core.Deligates;
+using AltMediatR.Core.Delegates;
 using Microsoft.Extensions.Logging;
 
 namespace AltMediatR.Core.Behaviors
 {
-    public class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
+    public sealed class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
     {
         private readonly ILogger<LoggingBehavior<TRequest, TResponse>> _logger;
 

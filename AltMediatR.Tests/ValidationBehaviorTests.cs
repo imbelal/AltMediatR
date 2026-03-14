@@ -1,6 +1,6 @@
 ﻿using AltMediatR.Core.Abstractions;
 using AltMediatR.Core.Behaviors;
-using AltMediatR.Core.Deligates;
+using AltMediatR.Core.Delegates;
 using Moq;
 using System.ComponentModel.DataAnnotations;
 using ValidationResult = AltMediatR.Core.Behaviors.ValidationResult;
