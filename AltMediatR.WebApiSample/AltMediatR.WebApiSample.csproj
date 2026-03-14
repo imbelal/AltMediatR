@@ -16,6 +16,9 @@
   <ItemGroup>
     <ProjectReference Include="..\AltMediatR.Core\AltMediatR.Core.csproj" />
     <ProjectReference Include="..\AltMediatR.DDD\AltMediatR.DDD.csproj" />
+    <ProjectReference Include="..\AltMediatR.SourceGenerator\AltMediatR.SourceGenerator.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
 
 </Project>

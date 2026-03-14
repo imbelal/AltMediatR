@@ -1,9 +1,9 @@
 using AltMediatR.Core.Extensions;
 using AltMediatR.DDD.Abstractions;
 using AltMediatR.DDD.Extensions;
+using AltMediatR.Generated;
 using AltMediatR.WebApiSample.Infrastructure;
 using Microsoft.EntityFrameworkCore;
-using System.Reflection;
 
 namespace AltMediatR.WebApiSample;
 
@@ -29,11 +29,10 @@ public class Program
         builder.Services
             // Mediator setup
             .AddAltMediator(s => { })
-            .AddHandlersFromAssembly(Assembly.GetExecutingAssembly())
+            .AddGeneratedHandlers()  // compile-time generated — replaces AddHandlersFromAssembly + AddDddHandlersFromAssembly
 
-            // DDD integration
+            // DDD integration infrastructure
             .AddDddIntegrationDdd()
-            .AddDddHandlersFromAssembly(Assembly.GetExecutingAssembly())
 
             // Query caching
             .AddCachingForQueries(_ => { /* can override defaults here */ })
