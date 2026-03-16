@@ -90,7 +90,7 @@ builder.Services.AddAltMediatorDdd()
 
 builder.Services.AddCachingForQueries(_ => { });
 
-builder.Services.RegisterHandlersFromAssembly(Assembly.GetExecutingAssembly());
+builder.Services.AddHandlersFromAssembly(Assembly.GetExecutingAssembly());
 
 builder.Services.AddScoped<IEventQueueCollector, EfChangeTrackerEventCollector>();
 builder.Services.AddScoped<ITransactionManager, EfTransactionManager>();
@@ -231,7 +231,7 @@ await mediator.PublishAsync(new UserCreatedNotification { UserId = id });
 
 Use the helpers in `AltMediatR.Core.Extensions.MediatorExtensions` (Core) and `AltMediatR.DDD.Extensions.DddExtensions` (DDD):
 
-- Core: `AddLoggingBehavior()`, `AddValidationBehavior()`, `AddPerformanceBehavior()`, `AddRetryBehavior()`
+- Core: `AddLoggingBehavior()`, `AddValidationBehavior()`, `AddPerformanceBehavior()`, `AddRetryBehavior()` / `AddRetryBehavior(opts => { opts.MaxAttempts = 5; opts.BaseDelayMs = 100; })`
 - DDD: `AddCachingForQueries([options])`, `AddTransactionalOutboxBehavior()`, `AddInMemoryOutboxStore()`, `AddInMemoryIntegrationEventPublisher()`
 
 ### Behavior ordering
@@ -244,7 +244,7 @@ Provide a `PipelineConfig` singleton with `BehaviorsInOrder` listing open generi
   - LoggingBehavior: logs before/after handler.
   - ValidationBehavior: uses `IValidator<TRequest>` (default `NoOpValidator` registered).
   - PerformanceBehavior: times handler execution.
-  - RetryBehavior: simple retry with logging on exceptions.
+  - RetryBehavior: configurable retry with exponential backoff. Use `AddRetryBehavior()` for defaults (3 attempts, 200 ms base delay) or `AddRetryBehavior(opts => { opts.MaxAttempts = 5; opts.BaseDelayMs = 100; })` for custom settings.
 - DDD
   - CachingBehavior: caches only `IQuery<T>` requests implementing `ICacheable`.
   - TransactionalEventDispatcherBehavior: wraps handler in a transaction, dispatches domain events (via mediator PublishAsync), and publishes integration events; on publish failure, stores events in `IOutboxStore`.

@@ -1,5 +1,5 @@
 using AltMediatR.Core.Abstractions;
-using AltMediatR.Core.Deligates;
+using AltMediatR.Core.Delegates;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using AltMediatR.DDD.Configurations;
@@ -7,7 +7,7 @@ using AltMediatR.DDD.Abstractions;
 
 namespace AltMediatR.DDD.Behaviors
 {
-    public class CachingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
+    public sealed class CachingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
         where TRequest : IRequest<TResponse>
     {
         private readonly IMemoryCache _cache;

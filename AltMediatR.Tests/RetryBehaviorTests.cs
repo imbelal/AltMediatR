@@ -1,6 +1,7 @@
 ﻿using AltMediatR.Core.Abstractions;
 using AltMediatR.Core.Behaviors;
-using AltMediatR.Core.Deligates;
+using AltMediatR.Core.Configurations;
+using AltMediatR.Core.Delegates;
 using Microsoft.Extensions.Logging;
 using Moq;
 
@@ -37,7 +38,7 @@ namespace AltMediatR.Tests
         {
             // Arrange
             var request = new SampleRetryRequest { Payload = "RetryMe" };
-            var behavior = new RetryBehavior<SampleRetryRequest, string>(_loggerMock.Object);
+            var behavior = new RetryBehavior<SampleRetryRequest, string>(_loggerMock.Object, new RetryOptions { MaxAttempts = 3, BaseDelayMs = 0 });
 
             int attempts = 0;
 
@@ -78,7 +79,7 @@ namespace AltMediatR.Tests
         {
             // Arrange
             var request = new SampleRetryRequest { Payload = "x" };
-            var behavior = new RetryBehavior<SampleRetryRequest, string>(_loggerMock.Object);
+            var behavior = new RetryBehavior<SampleRetryRequest, string>(_loggerMock.Object, new RetryOptions { MaxAttempts = 3, BaseDelayMs = 0 });
 
             int attempts = 0;
 
@@ -110,6 +111,55 @@ namespace AltMediatR.Tests
                     It.IsAny<Exception>(),
                     It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
                 Times.Once);
+        }
+
+        [Fact]
+        public async Task Handle_RespectsCustomMaxAttempts()
+        {
+            // Arrange
+            var request = new SampleRetryRequest { Payload = "x" };
+            var options = new RetryOptions { MaxAttempts = 5, BaseDelayMs = 0 };
+            var behavior = new RetryBehavior<SampleRetryRequest, string>(_loggerMock.Object, options);
+
+            int attempts = 0;
+
+            RequestHandlerDelegate<string> next = () =>
+            {
+                attempts++;
+                throw new Exception("Always fails");
+            };
+
+            // Act & Assert
+            await Assert.ThrowsAsync<Exception>(() =>
+                behavior.HandleAsync(request, CancellationToken.None, next));
+
+            Assert.Equal(5, attempts);
+        }
+
+        [Fact]
+        public async Task Handle_SucceedsOnFinalAttempt_WithCustomOptions()
+        {
+            // Arrange
+            var request = new SampleRetryRequest { Payload = "x" };
+            var options = new RetryOptions { MaxAttempts = 2, BaseDelayMs = 0 };
+            var behavior = new RetryBehavior<SampleRetryRequest, string>(_loggerMock.Object, options);
+
+            int attempts = 0;
+
+            RequestHandlerDelegate<string> next = () =>
+            {
+                attempts++;
+                if (attempts < 2)
+                    throw new InvalidOperationException("First attempt fails");
+                return Task.FromResult("Success on attempt 2");
+            };
+
+            // Act
+            var result = await behavior.HandleAsync(request, CancellationToken.None, next);
+
+            // Assert
+            Assert.Equal("Success on attempt 2", result);
+            Assert.Equal(2, attempts);
         }
     }
 }

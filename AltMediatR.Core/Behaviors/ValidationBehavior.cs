@@ -1,10 +1,10 @@
 ﻿using AltMediatR.Core.Abstractions;
-using AltMediatR.Core.Deligates;
+using AltMediatR.Core.Delegates;
 using System.ComponentModel.DataAnnotations;
 
 namespace AltMediatR.Core.Behaviors
 {
-    public class ValidationBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
+    public sealed class ValidationBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
     {
         private readonly IValidator<TRequest> _validator;
 

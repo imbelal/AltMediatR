@@ -1,7 +1,7 @@
 using AltMediatR.Core.Abstractions;
 using AltMediatR.Core.Configurations;
 using AltMediatR.Core.Extensions;
-using AltMediatR.Core.Deligates;
+using AltMediatR.Core.Delegates;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Xunit;

@@ -1,17 +1,10 @@
 using AltMediatR.Core.Abstractions;
-using AltMediatR.Core.Deligates;
+using AltMediatR.Core.Delegates;
 using AltMediatR.DDD.Abstractions;
+using AltMediatR.DDD.Configurations;
 
 namespace AltMediatR.DDD.Behaviors
 {
-    public enum DispatchOrder { DomainFirst, IntegrationFirst }
-
-    public sealed class DddMediatorOptions
-    {
-        public DispatchOrder DispatchOrder { get; set; } = DispatchOrder.DomainFirst;
-        public bool ParallelDispatch { get; set; } = false;
-    }
-
     /// <summary>
     /// Wraps request handling in a DB transaction; configurable dispatch of domain and integration events collected from aggregates.
     /// On publish failure, stores integration events in outbox store and still commits the transaction.

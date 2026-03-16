@@ -28,7 +28,7 @@ namespace AltMediatR.Tests
             var behavior = new AltMediatR.DDD.Behaviors.CachingBehavior<SampleRequest, string>(_memoryCache, _loggerMock.Object);
 
             bool nextWasCalled = false;
-            AltMediatR.Core.Deligates.RequestHandlerDelegate<string> next = () =>
+            AltMediatR.Core.Delegates.RequestHandlerDelegate<string> next = () =>
             {
                 nextWasCalled = true;
                 return Task.FromResult("Should not run");
@@ -59,7 +59,7 @@ namespace AltMediatR.Tests
 
             var behavior = new AltMediatR.DDD.Behaviors.CachingBehavior<SampleRequest, string>(_memoryCache, _loggerMock.Object);
 
-            AltMediatR.Core.Deligates.RequestHandlerDelegate<string> next = () => Task.FromResult(expected);
+            AltMediatR.Core.Delegates.RequestHandlerDelegate<string> next = () => Task.FromResult(expected);
 
             // Act
             var result = await behavior.HandleAsync(request, CancellationToken.None, next);

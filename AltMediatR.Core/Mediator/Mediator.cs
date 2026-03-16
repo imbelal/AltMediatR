@@ -1,7 +1,7 @@
 ﻿using AltMediatR.Core.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using System.Reflection;
-using AltMediatR.Core.Deligates;
+using AltMediatR.Core.Delegates;
 using AltMediatR.Core.Configurations;
 using System.Linq;
 using System.Collections.Concurrent;
@@ -219,7 +219,7 @@ namespace AltMediatR.Core.Mediator
             var handlers = _serviceProvider.GetServices<INotificationHandler<TNotification>>();
             foreach (var handler in handlers)
             {
-                await handler.HandleAsync(notification, cancellationToken);
+                await handler.HandleAsync(notification, cancellationToken).ConfigureAwait(false);
             }
         }
 

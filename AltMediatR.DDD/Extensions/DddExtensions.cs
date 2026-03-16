@@ -8,11 +8,21 @@ namespace AltMediatR.DDD.Extensions
 {
     public static class DddExtensions
     {
-        public static IServiceCollection AddDddIntegrationDdd(this IServiceCollection services)
+        /// <summary>
+        /// Adds core DDD mediator options to the service collection.
+        /// </summary>
+        public static IServiceCollection AddAltMediatorDdd(this IServiceCollection services)
         {
             services.AddSingleton(new DddMediatorOptions());
             return services;
         }
+
+        /// <summary>
+        /// Adds core DDD mediator options to the service collection.
+        /// </summary>
+        [Obsolete("Use AddAltMediatorDdd() instead. This method will be removed in a future version.")]
+        public static IServiceCollection AddDddIntegrationDdd(this IServiceCollection services)
+            => AddAltMediatorDdd(services);
 
         public static IServiceCollection ConfigureDddMediator(this IServiceCollection services, Action<DddMediatorOptions> configure)
         {

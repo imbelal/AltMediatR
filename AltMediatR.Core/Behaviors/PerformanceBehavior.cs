@@ -1,11 +1,11 @@
 ﻿using AltMediatR.Core.Abstractions;
-using AltMediatR.Core.Deligates;
+using AltMediatR.Core.Delegates;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 
 namespace AltMediatR.Core.Behaviors
 {
-    public class PerformanceBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
+    public sealed class PerformanceBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
         where TRequest : IRequest<TResponse>
     {
         private readonly ILogger<PerformanceBehavior<TRequest, TResponse>> _logger;
@@ -27,7 +27,7 @@ namespace AltMediatR.Core.Behaviors
             stopwatch.Stop();
             var elapsedMs = stopwatch.ElapsedMilliseconds;
 
-            _logger.LogInformation($"[PERF] {typeof(TRequest).Name} took {elapsedMs} ms");
+            _logger.LogInformation("[PERF] {RequestName} took {ElapsedMs} ms", typeof(TRequest).Name, elapsedMs);
 
             return response;
         }
