@@ -10,16 +10,27 @@ namespace AltMediatR.SourceGenerator
 {
     /// <summary>
     /// Roslyn incremental source generator that discovers AltMediatR handler implementations at compile
-    /// time and emits a <c>GeneratedHandlerRegistrations.AddGeneratedHandlers</c> extension method on
-    /// <c>IServiceCollection</c>.  This replaces the runtime-reflection-based
-    /// <c>AddHandlersFromAssembly</c> / <c>AddDddHandlersFromAssembly</c> calls.
+    /// time and emits two files:
+    /// <list type="bullet">
+    ///   <item><description>
+    ///     <c>GeneratedHandlerRegistrations.g.cs</c> — an <c>AddGeneratedHandlers()</c> extension on
+    ///     <c>IServiceCollection</c> that replaces the runtime-reflection-based
+    ///     <c>AddHandlersFromAssembly</c> / <c>AddDddHandlersFromAssembly</c> calls.
+    ///   </description></item>
+    ///   <item><description>
+    ///     <c>GeneratedHandlerDispatcher.g.cs</c> — a <c>GeneratedHandlerDispatcher</c> class that
+    ///     implements <c>ICompiledHandlerDispatcher</c> and routes every known request type via a
+    ///     compile-time switch, eliminating <c>MakeGenericMethod</c>/<c>Invoke</c> reflection in the
+    ///     Mediator's <c>SendAsync</c> methods.
+    ///   </description></item>
+    /// </list>
     /// </summary>
     [Generator]
     public sealed class HandlerRegistrationGenerator : IIncrementalGenerator
     {
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
-            // Collect all handler registrations discovered in the compilation.
+            // Collect all handler entries discovered in the compilation.
             var entries = context.SyntaxProvider
                 .CreateSyntaxProvider(
                     predicate: static (node, _) => node is ClassDeclarationSyntax { BaseList: not null },
@@ -56,11 +67,42 @@ namespace AltMediatR.SourceGenerator
             {
                 if (!iface.IsGenericType) continue;
 
-                if (!IsHandlerInterface(iface.ConstructedFrom)) continue;
+                var ifaceDef = iface.ConstructedFrom;
+                if (!IsHandlerInterface(ifaceDef)) continue;
 
                 var serviceType = iface.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
                 var implType = classSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-                var entry = new HandlerEntry(serviceType, implType);
+
+                // Determine the handler kind and extract the concrete request/response types
+                // for the compile-time dispatcher.
+                var ns = ifaceDef.ContainingNamespace?.ToDisplayString();
+                var ifaceName = ifaceDef.Name;
+                var typeArgs = iface.TypeArguments;
+
+                HandlerKind kind;
+                string? requestTypeFqn = null;
+                string? responseTypeFqn = null;
+
+                if (ns == "AltMediatR.Core.Abstractions" && ifaceName == "IRequestHandler")
+                {
+                    if (typeArgs.Length == 2)
+                    {
+                        kind = HandlerKind.Response;
+                        requestTypeFqn = typeArgs[0].ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                        responseTypeFqn = typeArgs[1].ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                    }
+                    else // Length == 1 — void (IRequest) handler
+                    {
+                        kind = HandlerKind.Void;
+                        requestTypeFqn = typeArgs[0].ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                    }
+                }
+                else
+                {
+                    kind = HandlerKind.Other;
+                }
+
+                var entry = new HandlerEntry(serviceType, implType, kind, requestTypeFqn, responseTypeFqn);
 
                 // Avoid duplicates when a class appears in multiple partial files.
                 if (!builder.Contains(entry))
@@ -121,7 +163,7 @@ namespace AltMediatR.SourceGenerator
         }
 
         /// <summary>
-        /// Emits the <c>GeneratedHandlerRegistrations</c> source file.
+        /// Emits both generated source files for the compilation.
         /// </summary>
         private static void Emit(
             SourceProductionContext ctx, ImmutableArray<HandlerEntry> entries)
@@ -135,6 +177,16 @@ namespace AltMediatR.SourceGenerator
                     unique.Add(e);
             }
 
+            EmitRegistrations(ctx, unique);
+            EmitDispatcher(ctx, unique);
+        }
+
+        // ------------------------------------------------------------------
+        // File 1: GeneratedHandlerRegistrations.g.cs
+        // ------------------------------------------------------------------
+
+        private static void EmitRegistrations(SourceProductionContext ctx, List<HandlerEntry> unique)
+        {
             var sb = new StringBuilder();
             sb.AppendLine("// <auto-generated/>");
             sb.AppendLine("// This file was generated by AltMediatR.SourceGenerator.");
@@ -152,9 +204,11 @@ namespace AltMediatR.SourceGenerator
             sb.AppendLine("    public static class GeneratedHandlerRegistrations");
             sb.AppendLine("    {");
             sb.AppendLine("        /// <summary>");
-            sb.AppendLine("        /// Registers all AltMediatR handlers discovered at compile time.");
+            sb.AppendLine("        /// Registers all AltMediatR handlers discovered at compile time and the");
+            sb.AppendLine("        /// <c>ICompiledHandlerDispatcher</c> that eliminates <c>MakeGenericMethod</c>");
+            sb.AppendLine("        /// reflection from the Mediator's dispatch path.");
             sb.AppendLine("        /// Call this instead of <c>AddHandlersFromAssembly</c> /");
-            sb.AppendLine("        /// <c>AddDddHandlersFromAssembly</c> to eliminate runtime reflection.");
+            sb.AppendLine("        /// <c>AddDddHandlersFromAssembly</c> to eliminate runtime reflection entirely.");
             sb.AppendLine("        /// </summary>");
             sb.AppendLine(
                 "        public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddGeneratedHandlers(");
@@ -162,11 +216,16 @@ namespace AltMediatR.SourceGenerator
                 "            this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)");
             sb.AppendLine("        {");
 
+            // Register each handler
             foreach (var entry in unique)
             {
                 sb.AppendLine(
                     $"            services.AddTransient<{entry.ServiceType}, {entry.ImplementationType}>();");
             }
+
+            // Register the compiled dispatcher (singleton — it is stateless)
+            sb.AppendLine(
+                "            services.AddSingleton<global::AltMediatR.Core.Abstractions.ICompiledHandlerDispatcher, global::AltMediatR.Generated.GeneratedHandlerDispatcher>();");
 
             sb.AppendLine("            return services;");
             sb.AppendLine("        }");
@@ -175,20 +234,126 @@ namespace AltMediatR.SourceGenerator
 
             ctx.AddSource("GeneratedHandlerRegistrations.g.cs", sb.ToString());
         }
+
+        // ------------------------------------------------------------------
+        // File 2: GeneratedHandlerDispatcher.g.cs
+        // ------------------------------------------------------------------
+
+        private static void EmitDispatcher(SourceProductionContext ctx, List<HandlerEntry> unique)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("// <auto-generated/>");
+            sb.AppendLine("// This file was generated by AltMediatR.SourceGenerator.");
+            sb.AppendLine("// Do not edit this file manually.");
+            sb.AppendLine("#nullable enable");
+            sb.AppendLine();
+            sb.AppendLine("namespace AltMediatR.Generated");
+            sb.AppendLine("{");
+            sb.AppendLine("    /// <summary>");
+            sb.AppendLine("    /// Auto-generated compile-time request dispatcher.");
+            sb.AppendLine("    /// Routes each known request type directly to the typed pipeline method");
+            sb.AppendLine("    /// (<c>ExecutePipelineAsync</c> / <c>ExecuteVoidPipelineAsync</c>) without");
+            sb.AppendLine("    /// any runtime reflection (<c>MakeGenericMethod</c>/<c>Invoke</c>).");
+            sb.AppendLine("    /// </summary>");
+            sb.AppendLine(
+                "    public sealed class GeneratedHandlerDispatcher : global::AltMediatR.Core.Abstractions.ICompiledHandlerDispatcher");
+            sb.AppendLine("    {");
+
+            // TryDispatch — response handlers
+            sb.AppendLine("        public bool TryDispatch<TResponse>(");
+            sb.AppendLine("            global::AltMediatR.Core.Abstractions.IPipelineDispatcher dispatcher,");
+            sb.AppendLine("            global::AltMediatR.Core.Abstractions.IRequest<TResponse> request,");
+            sb.AppendLine("            global::System.Threading.CancellationToken cancellationToken,");
+            sb.AppendLine("            out global::System.Threading.Tasks.Task<TResponse>? task)");
+            sb.AppendLine("        {");
+
+            int idx = 0;
+            foreach (var entry in unique)
+            {
+                if (entry.Kind != HandlerKind.Response) continue;
+                sb.AppendLine($"            if (request is {entry.RequestTypeFqn} req{idx})");
+                sb.AppendLine("            {");
+                sb.AppendLine(
+                    $"                task = (global::System.Threading.Tasks.Task<TResponse>)(object)");
+                sb.AppendLine(
+                    $"                    dispatcher.ExecutePipelineAsync<{entry.RequestTypeFqn}, {entry.ResponseTypeFqn}>(req{idx}, cancellationToken);");
+                sb.AppendLine("                return true;");
+                sb.AppendLine("            }");
+                idx++;
+            }
+
+            sb.AppendLine("            task = null;");
+            sb.AppendLine("            return false;");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+
+            // TryDispatchVoid — void handlers
+            sb.AppendLine("        public bool TryDispatchVoid(");
+            sb.AppendLine("            global::AltMediatR.Core.Abstractions.IPipelineDispatcher dispatcher,");
+            sb.AppendLine("            global::AltMediatR.Core.Abstractions.IRequest request,");
+            sb.AppendLine("            global::System.Threading.CancellationToken cancellationToken,");
+            sb.AppendLine("            out global::System.Threading.Tasks.Task? task)");
+            sb.AppendLine("        {");
+
+            idx = 0;
+            foreach (var entry in unique)
+            {
+                if (entry.Kind != HandlerKind.Void) continue;
+                sb.AppendLine($"            if (request is {entry.RequestTypeFqn} voidReq{idx})");
+                sb.AppendLine("            {");
+                sb.AppendLine(
+                    $"                task = dispatcher.ExecuteVoidPipelineAsync<{entry.RequestTypeFqn}>(voidReq{idx}, cancellationToken);");
+                sb.AppendLine("                return true;");
+                sb.AppendLine("            }");
+                idx++;
+            }
+
+            sb.AppendLine("            task = null;");
+            sb.AppendLine("            return false;");
+            sb.AppendLine("        }");
+            sb.AppendLine("    }");
+            sb.AppendLine("}");
+
+            ctx.AddSource("GeneratedHandlerDispatcher.g.cs", sb.ToString());
+        }
     }
 
-    /// <summary>Value-equality pair of (service interface type, implementation type) display strings.</summary>
+    // ------------------------------------------------------------------
+    // Supporting types
+    // ------------------------------------------------------------------
+
+    internal enum HandlerKind
+    {
+        Response,  // IRequestHandler<TRequest, TResponse> — dispatched in TryDispatch
+        Void,      // IRequestHandler<TRequest>            — dispatched in TryDispatchVoid
+        Other      // Notification, PreProcessor, etc.     — registered only, not dispatched
+    }
+
+    /// <summary>Value-equality tuple of (service interface type FQN, implementation type FQN).</summary>
     internal readonly struct HandlerEntry : System.IEquatable<HandlerEntry>
     {
         public readonly string ServiceType;
         public readonly string ImplementationType;
+        public readonly HandlerKind Kind;
+        public readonly string? RequestTypeFqn;   // set for Response and Void handlers
+        public readonly string? ResponseTypeFqn;  // set for Response handlers only
 
-        public HandlerEntry(string serviceType, string implementationType)
+        public HandlerEntry(
+            string serviceType,
+            string implementationType,
+            HandlerKind kind,
+            string? requestTypeFqn,
+            string? responseTypeFqn)
         {
             ServiceType = serviceType;
             ImplementationType = implementationType;
+            Kind = kind;
+            RequestTypeFqn = requestTypeFqn;
+            ResponseTypeFqn = responseTypeFqn;
         }
 
+        // Equality is keyed only on the service/impl pair so that deduplication works correctly
+        // across partial files; Kind and type FQNs are always consistent for the same pair.
         public bool Equals(HandlerEntry other) =>
             ServiceType == other.ServiceType && ImplementationType == other.ImplementationType;
 
